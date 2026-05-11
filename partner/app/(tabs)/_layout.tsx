@@ -4,7 +4,7 @@ import { Colors } from '../../constants/colors';
 import { View, StyleSheet } from 'react-native';
 import { Home, Calendar, Compass, Hotel, Bike, User } from 'lucide-react-native';
 import Header from '../../components/Header';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function TabIcon({ Icon, focused }: { Icon: any; focused: boolean }) {
   return (
@@ -32,6 +32,10 @@ const tabStyles = StyleSheet.create({
 export default function TabsLayout() {
   const { profile } = useAuthStore();
   const role = profile?.role ?? 'guide';
+  const insets = useSafeAreaInsets();
+  
+  const bottomPadding = insets.bottom > 0 ? insets.bottom : 12;
+  const tabHeight = 60 + bottomPadding;
 
   const listingLabel =
     role === 'guide' ? 'Services' : role === 'hotel' ? 'Rooms' : 'Vehicles';
@@ -41,9 +45,9 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: true,
         header: () => (
-          <SafeAreaView edges={['top']} style={{ backgroundColor: Colors.white }}>
+          <View style={{ backgroundColor: Colors.white, paddingTop: insets.top }}>
             <Header />
-          </SafeAreaView>
+          </View>
         ),
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.textLight,
@@ -51,8 +55,8 @@ export default function TabsLayout() {
           backgroundColor: Colors.white,
           borderTopColor: Colors.border,
           borderTopWidth: 1,
-          height: 72,
-          paddingBottom: 12,
+          height: tabHeight,
+          paddingBottom: bottomPadding,
           paddingTop: 6,
         },
         tabBarLabelStyle: {

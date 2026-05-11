@@ -95,6 +95,7 @@ export async function getPartnerById(id: string): Promise<Partner | null> {
       profileData: row.profile_data,
       documents: row.documents || [],
       photoUrl: row.photo_url,
+      kycVideoUrl: row.kyc_video_url,
     } as any;
   } catch (error) {
     console.error('Error fetching partner details:', error);
@@ -104,22 +105,49 @@ export async function getPartnerById(id: string): Promise<Partner | null> {
 
 export async function getListings(): Promise<Listing[]> {
   try {
-    const { data, error } = await supabaseAdmin
+    // 1. Fetch listings
+    const { data: listingsData, error: listingsError } = await supabaseAdmin
       .from('listings')
       .select('*');
 
-    if (error) throw error;
+    if (listingsError) throw listingsError;
 
-    return (data || []).map((row) => ({
-      id: row.id,
-      name: row.title || 'Untitled Listing',
-      partner: row.partner_id || 'Unknown Partner',
-      category: row.type || 'Other',
-      location: row.location || 'Unknown Location',
-      price: row.price ? `₹${row.price}` : 'N/A',
-      status: row.is_active ? 'active' : 'draft',
-      details: row.details || {},
-    } as Listing));
+    // 2. Fetch all reviews
+    const { data: reviewsData, error: reviewsError } = await supabaseAdmin
+      .from('reviews')
+      .select('item_id, rating');
+
+    if (reviewsError) {
+      console.warn('Error fetching reviews:', reviewsError);
+    }
+
+    const reviews = reviewsData || [];
+
+    return (listingsData || []).map((row) => {
+      // Calculate dynamic ratings and reviews count
+      const itemReviews = reviews.filter(r => r.item_id === row.id);
+      const reviewsCount = itemReviews.length;
+      const averageRating = reviewsCount > 0
+        ? (itemReviews.reduce((sum, r) => sum + r.rating, 0) / reviewsCount).toFixed(1)
+        : null;
+
+      const baseDetails = row.details || {};
+
+      return {
+        id: row.id,
+        name: row.title || 'Untitled Listing',
+        partner: row.partner_id || 'Unknown Partner',
+        category: row.type || 'Other',
+        location: row.location || 'Unknown Location',
+        price: row.price ? `₹${row.price}` : 'N/A',
+        status: row.is_active ? 'active' : 'draft',
+        details: {
+          ...baseDetails,
+          rating: averageRating || baseDetails.rating || 'No ratings',
+          reviews: reviewsCount || baseDetails.reviews || 0,
+        },
+      } as Listing;
+    });
   } catch (error) {
     console.error('Error fetching listings:', error);
     return [];
@@ -143,6 +171,9 @@ export async function getBookings(): Promise<Booking[]> {
       guests: row.days || 1,
       amount: row.amount || row.price ? `₹${row.amount || row.price}` : 'N/A',
       status: row.status || 'pending',
+      paymentProvider: row.payment_provider,
+      paymentVerifiedAt: row.payment_verified_at,
+      razorpayOrderId: row.razorpay_order_id,
     } as Booking));
   } catch (error) {
     console.error('Error fetching bookings:', error);

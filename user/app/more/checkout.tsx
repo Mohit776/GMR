@@ -11,6 +11,20 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../utils/supabase';
 
+async function invokeFunction<T>(name: string, body: unknown): Promise<T> {
+  const result = await supabase.functions.invoke(name, { body: body as any });
+  if (result.error) {
+    let message = result.error.message || `${name} failed.`;
+    const context = (result.error as any).context;
+    if (context && typeof context.json === 'function') {
+      try { const b = await context.json(); message = b?.error || b?.message || message; } catch {}
+    }
+    throw new Error(message);
+  }
+  if (!result.data) throw new Error(`${name} returned empty response.`);
+  return result.data as T;
+}
+
 // ─── Colors ────────────────────────────────────────────────────────────────────
 const C = {
   primary: '#16A34A', white: '#FFFFFF', bg: '#F8FAFC',
@@ -33,6 +47,7 @@ export default function CheckoutScreen() {
   const params = useLocalSearchParams<{
     bookingType: string; itemId: string; itemName: string;
     pricePerUnit: string; partnerId: string; unitLabel: string;
+    guideCity: string; // city where the guide operates (for dispatch)
   }>();
 
   const unitPrice = parseFloat(params.pricePerUnit || '0');
@@ -55,6 +70,9 @@ export default function CheckoutScreen() {
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [phoneInput, setPhoneInput] = useState('');
   const [phoneSaving, setPhoneSaving] = useState(false);
+
+  // ── Request state ─────────────────────────────────────────────────────────────
+  const [requesting, setRequesting] = useState(false);
 
   // ── Pricing ──────────────────────────────────────────────────────────────────
   const quantity = useMemo(() => {
@@ -93,32 +111,53 @@ export default function CheckoutScreen() {
   const openPicker = (target: 'start' | 'end', mode: 'date' | 'time') =>
     setPicker({ visible: true, mode, target });
 
-  // ── Navigate to payment ──────────────────────────────────────────────────────
-  const proceedToPayment = () => {
-    router.push({
-      pathname: '/more/payment',
-      params: {
-        amount: String(total),
-        description: `${params.itemName} – ${quantity} ${unitLabel}${quantity > 1 ? 's' : ''}`,
-        bookingType: params.bookingType || 'unknown',
-        itemId: params.itemId || '',
-        itemName: params.itemName || '',
-        days: String(quantity),
-        partnerId: params.partnerId || params.itemId || '',
-        coupon: discountApplied ? coupon.trim().toUpperCase() : '',
-        discountAmount: String(discountAmount),
-      },
-    });
+  // ── Send booking request (guide-first flow) ───────────────────────────────────
+  const sendBookingRequest = async () => {
+    if (!user) { Alert.alert('Sign in required', 'Please sign in first.'); return; }
+
+    // guideCity is explicitly passed from guideDetail screen
+    // Fall back to itemName only as last resort (e.g. hotel/rental city flows)
+    const city = (params.guideCity || params.itemName || '').trim();
+    if (!city) { Alert.alert('Missing city', 'Could not determine city for this booking. Please go back and try again.'); return; }
+
+    setRequesting(true);
+    try {
+      await invokeFunction<{ success: boolean; bookingId: string; notifiedCount: number }>(
+        'send-booking-request',
+        {
+          city,
+          bookingType: params.bookingType || 'guide',
+          itemId: params.itemId || '',
+          itemName: params.itemName || '',
+          days: quantity,
+          amount: total,
+          description: `${params.itemName} – ${quantity} ${unitLabel}${quantity > 1 ? 's' : ''}`,
+          coupon: discountApplied ? coupon.trim().toUpperCase() : undefined,
+          discountAmount: discountApplied ? discountAmount : undefined,
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+        }
+      );
+
+      Alert.alert(
+        'Request Sent!',
+        `Guides in ${city} have been notified. We'll alert you as soon as one accepts your booking.`,
+        [{ text: 'View Bookings', onPress: () => router.replace('/more/MyBookings') }]
+      );
+    } catch (e: any) {
+      Alert.alert('Request Failed', e.message || 'Could not send booking request. Please try again.');
+    } finally {
+      setRequesting(false);
+    }
   };
 
   const handleProceed = () => {
     const phone = user?.phoneNumber || user?.user_metadata?.phone || '';
     if (!phone || phone.trim().length < 10) {
-      // Pre-fill with any partial number they may have
       setPhoneInput(phone || '');
       setShowPhoneModal(true);
     } else {
-      proceedToPayment();
+      sendBookingRequest();
     }
   };
 
@@ -146,8 +185,7 @@ export default function CheckoutScreen() {
       if (dbError) throw dbError;
 
       setShowPhoneModal(false);
-      // Small delay to allow auth state to refresh, then proceed
-      setTimeout(() => proceedToPayment(), 300);
+      setTimeout(() => sendBookingRequest(), 300);
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Could not save phone number. Please try again.');
     } finally {
@@ -365,9 +403,18 @@ export default function CheckoutScreen() {
           <Text style={s.ctaPrice}>₹{total.toLocaleString('en-IN')}</Text>
           <Text style={s.ctaSub}>{quantity} {unitLabel}{quantity > 1 ? 's' : ''} · incl. fees</Text>
         </View>
-        <TouchableOpacity style={s.ctaBtn} activeOpacity={0.85} onPress={handleProceed}>
-          <Ionicons name="lock-closed" size={16} color={C.white} />
-          <Text style={s.ctaBtnText}>Proceed to Pay</Text>
+        <TouchableOpacity
+          style={[s.ctaBtn, requesting && { opacity: 0.7 }]}
+          activeOpacity={0.85}
+          onPress={handleProceed}
+          disabled={requesting}
+        >
+          {requesting ? (
+            <ActivityIndicator size="small" color={C.white} />
+          ) : (
+            <Ionicons name="paper-plane" size={16} color={C.white} />
+          )}
+          <Text style={s.ctaBtnText}>{requesting ? 'Sending Request…' : 'Request a Guide'}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

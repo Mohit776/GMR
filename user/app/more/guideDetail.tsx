@@ -40,6 +40,7 @@ interface Guide {
   listings: GuideListing[];
   isApproved: boolean;
   isOnline: boolean;
+  city: string; // city where guide operates
 }
 
 export default function GuideDetailScreen() {
@@ -128,6 +129,9 @@ export default function GuideDetailScreen() {
           const effectiveLocation = profileData.location ||
             (parsedListings.length > 0 ? parsedListings[0].location : '') || '';
 
+          // City: from users.city column (set during guide onboarding)
+          const guideCity = (data.city || profileData.city || effectiveLocation || '').trim();
+
           setGuide({
             id: data.id,
             name: data.name || 'Anonymous Guide',
@@ -152,6 +156,7 @@ export default function GuideDetailScreen() {
             listings: parsedListings,
             isApproved: data.is_approved === true,
             isOnline: data.is_online === true,
+            city: guideCity,
           });
         }
       } catch (error: any) {
@@ -390,6 +395,7 @@ export default function GuideDetailScreen() {
                   pricePerUnit: String(guide.price),
                   partnerId: guide.id,
                   unitLabel: 'day',
+                  guideCity: guide.city, // ← city for guide-first dispatch
                 },
               });
             }}

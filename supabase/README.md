@@ -1,6 +1,6 @@
 # Supabase Push Deployment
 
-1. Run `schema.sql` in the Supabase SQL editor. It creates the app tables, `push_tokens`, storage buckets, and RLS policies.
+1. Run `schema.sql` in the Supabase SQL editor. It creates the app tables, storage buckets, and RLS policies.
 2. Deploy the Edge Function in `functions/send-push`.
 3. In Supabase Dashboard, create database webhooks to call the deployed `send-push` function:
    - `public.bookings` after `INSERT`

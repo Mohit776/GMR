@@ -47,6 +47,12 @@ export interface Partner {
   status: PartnerStatus;
   avatarInitials: string;
   avatarColor: string;
+  email?: string;
+  phone?: string;
+  profileData?: any;
+  documents?: string[];
+  photoUrl?: string;
+  kycVideoUrl?: string;
 }
 
 export const partners: Partner[] = [
@@ -92,6 +98,9 @@ export interface Booking {
   guests: number;
   amount: string;
   status: BookingStatus;
+  paymentProvider?: string;
+  paymentVerifiedAt?: string | null;
+  razorpayOrderId?: string;
 }
 
 export const bookings: Booking[] = [

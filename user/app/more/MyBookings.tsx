@@ -47,6 +47,8 @@ interface Booking {
   status: StatusType;
   tab: TabType;
   item_id?: string;
+  pre_payment_status?: string | null; // guide-first flow states
+  booking_type?: string;
   _createdAt?: number;
 }
 
@@ -55,10 +57,17 @@ const FILTER_TABS: TabType[] = ['Upcoming', 'Completed', 'Cancelled'];
 
 // ─── Status Config ─────────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<StatusType, { color: string; bg: string }> = {
-  Confirmed: { color: COLORS.primary, bg: '#DCFCE7' },
-  Pending: { color: COLORS.orange, bg: '#FFF7ED' },
-  Completed: { color: COLORS.skyBlue, bg: '#E0F2FE' },
-  Cancelled: { color: COLORS.danger, bg: '#FEE2E2' },
+  Confirmed:     { color: COLORS.primary,  bg: '#DCFCE7' },
+  Pending:       { color: COLORS.orange,   bg: '#FFF7ED' },
+  Completed:     { color: COLORS.skyBlue,  bg: '#E0F2FE' },
+  Cancelled:     { color: COLORS.danger,   bg: '#FEE2E2' },
+};
+
+// Guide-first booking sub-state display config
+const PRE_PAYMENT_CONFIG: Record<string, { color: string; bg: string; label: string }> = {
+  awaiting_guide:   { color: COLORS.orange,  bg: '#FFF7ED', label: '🔍 Finding Guide…' },
+  awaiting_payment: { color: COLORS.teal,    bg: '#F0FDFA', label: '✅ Guide Accepted – Pay Now' },
+  confirmed:        { color: COLORS.primary, bg: '#DCFCE7', label: '✔ Confirmed' },
 };
 
 // ─── Vehicle Icon ──────────────────────────────────────────────────────────────
@@ -126,8 +135,23 @@ const BookingCard = ({ booking }: { booking: Booking }) => {
   const isCancelled = booking.tab === 'Cancelled';
   const isCompleted = booking.tab === 'Completed';
 
+  const prePayStatus = booking.pre_payment_status;
+  const isAwaitingGuide   = prePayStatus === 'awaiting_guide';
+  const isAwaitingPayment = prePayStatus === 'awaiting_payment';
+
+  const prePayConfig = prePayStatus ? PRE_PAYMENT_CONFIG[prePayStatus] : null;
+
   return (
     <View style={styles.bookingCard}>
+
+      {/* Guide-first status banner */}
+      {prePayConfig && (
+        <View style={[styles.prePayBanner, { backgroundColor: prePayConfig.bg }]}>
+          <Text style={[styles.prePayBannerText, { color: prePayConfig.color }]}>
+            {prePayConfig.label}
+          </Text>
+        </View>
+      )}
 
       {/* ── Card Header ── */}
       <View style={styles.cardHeader}>
@@ -157,11 +181,13 @@ const BookingCard = ({ booking }: { booking: Booking }) => {
         </View>
 
         {/* Status Badge */}
-        <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
-          <Text style={[styles.statusText, { color: status.color }]}>
-            {booking.status}
-          </Text>
-        </View>
+        {!prePayConfig && (
+          <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
+            <Text style={[styles.statusText, { color: status.color }]}>
+              {booking.status}
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* ── Divider ── */}
@@ -192,10 +218,40 @@ const BookingCard = ({ booking }: { booking: Booking }) => {
 
       {/* ── Action Buttons ── */}
       <View style={styles.actionRow}>
-        {isUpcoming && booking.status === 'Confirmed' && (
+        {/* Guide-first: Awaiting guide */}
+        {isAwaitingGuide && (
+          <View style={[styles.guideStatusBox, { backgroundColor: '#FFF7ED', borderColor: '#FED7AA', flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 11, borderRadius: 10, gap: 8 }]}>
+            <ActivityIndicator size="small" color={COLORS.orange} />
+            <Text style={[styles.guideStatusText, { color: COLORS.orange, fontSize: 13, fontWeight: '700' }]}>
+              Looking for a guide...
+            </Text>
+          </View>
+        )}
+        {/* Guide-first: Pay Now */}
+        {isAwaitingPayment && (
+          <TouchableOpacity
+            style={[styles.primaryBtn, { backgroundColor: COLORS.teal, shadowColor: COLORS.teal }]}
+            activeOpacity={0.85}
+            onPress={() =>
+              router.push({
+                pathname: '/more/payment',
+                params: {
+                  bookingId: booking.id,
+                  amount: String(booking.totalAmount),
+                  description: booking.vehicleName,
+                },
+              })
+            }
+          >
+            <Ionicons name="card" size={16} color={COLORS.white} />
+            <Text style={styles.primaryBtnText}>Pay Now ₹{booking.totalAmount.toLocaleString()}</Text>
+          </TouchableOpacity>
+        )}
+        {/* Normal upcoming actions */}
+        {isUpcoming && !isAwaitingGuide && !isAwaitingPayment && booking.status === 'Confirmed' && (
           <>
-            <TouchableOpacity 
-              style={styles.secondaryBtn} 
+            <TouchableOpacity
+              style={styles.secondaryBtn}
               activeOpacity={0.8}
               onPress={() => router.push({ pathname: '/more/bookingDetail', params: { id: booking.id } })}
             >
@@ -207,10 +263,10 @@ const BookingCard = ({ booking }: { booking: Booking }) => {
             </TouchableOpacity>
           </>
         )}
-        {isUpcoming && booking.status === 'Pending' && (
+        {isUpcoming && !isAwaitingGuide && !isAwaitingPayment && booking.status === 'Pending' && (
           <>
-            <TouchableOpacity 
-              style={styles.secondaryBtn} 
+            <TouchableOpacity
+              style={styles.secondaryBtn}
               activeOpacity={0.8}
               onPress={() => router.push({ pathname: '/more/bookingDetail', params: { id: booking.id } })}
             >
@@ -223,15 +279,15 @@ const BookingCard = ({ booking }: { booking: Booking }) => {
         )}
         {isCompleted && (
           <>
-            <TouchableOpacity 
-              style={styles.secondaryBtn} 
+            <TouchableOpacity
+              style={styles.secondaryBtn}
               activeOpacity={0.8}
               onPress={() => router.push({ pathname: '/more/bookingDetail', params: { id: booking.id } })}
             >
               <Text style={styles.secondaryBtnText}>View Details</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.tealBtn} 
+            <TouchableOpacity
+              style={styles.tealBtn}
               activeOpacity={0.85}
               onPress={() => router.push({ pathname: '/more/RateAndReview', params: { bookingId: booking.id, itemId: booking.item_id } })}
             >
@@ -242,8 +298,8 @@ const BookingCard = ({ booking }: { booking: Booking }) => {
         )}
         {isCancelled && (
           <>
-            <TouchableOpacity 
-              style={styles.secondaryBtn} 
+            <TouchableOpacity
+              style={styles.secondaryBtn}
               activeOpacity={0.8}
               onPress={() => router.push({ pathname: '/more/bookingDetail', params: { id: booking.id } })}
             >
@@ -355,11 +411,13 @@ export default function MyBookingsScreen() {
           date: dateStr,
           time: timeStr,
           duration: row.days ? `${row.days} Days` : 'N/A',
-          pickup: row.pickup_location || 'Not specified',
+          pickup: row.pickup_location || row.city || 'Not specified',
           totalAmount: row.amount || row.price || 0,
           status,
           tab,
           item_id: row.item_id,
+          pre_payment_status: row.pre_payment_status || null,
+          booking_type: row.booking_type || null,
           _createdAt: row.created_at ? new Date(row.created_at).getTime() : 0,
         };
       });
@@ -604,6 +662,16 @@ const styles = StyleSheet.create({
     borderColor: COLORS.borderGray,
     overflow: 'hidden',
   },
+  prePayBanner: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderGray,
+  },
+  prePayBannerText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
   cardHeader: {
     flexDirection: 'row',
     padding: 14,
@@ -709,6 +777,12 @@ const styles = StyleSheet.create({
     gap: 10,
     padding: 14,
   },
+  guideStatusBox: {
+    borderWidth: 1.5,
+  },
+  guideStatusText: {
+    color: COLORS.orange,
+  },
   primaryBtn: {
     flex: 1,
     flexDirection: 'row',
@@ -798,8 +872,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   helpIconBox: {
-    width: 46,
-    height: 46,
+    width: 44,
+    height: 44,
     borderRadius: 12,
     backgroundColor: '#DCFCE7',
     alignItems: 'center',

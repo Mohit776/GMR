@@ -8,6 +8,7 @@ import {
   Briefcase,
   BookOpen,
   CalendarCheck,
+  Bell,
 } from 'lucide-react';
 
 const navItems = [
@@ -16,6 +17,7 @@ const navItems = [
   { name: 'Partners', href: '/partners', icon: Briefcase },
   { name: 'Listings', href: '/listings', icon: BookOpen },
   { name: 'Bookings', href: '/bookings', icon: CalendarCheck },
+  { name: 'Notifications', href: '/notifications', icon: Bell },
 ];
 
 export default function Sidebar() {

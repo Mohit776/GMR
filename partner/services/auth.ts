@@ -36,6 +36,10 @@ function toPartnerUser(user: any): PartnerAuthUser {
   };
 }
 
+function extractCity(value: unknown) {
+  return String(value || '').trim().split(',')[0]?.trim() || '';
+}
+
 export async function signInUser(email: string, password: string): Promise<PartnerAuthUser> {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
@@ -164,6 +168,12 @@ export async function signInWithGoogle(): Promise<PartnerAuthUser | null> {
 }
 
 export async function signOut() {
+  try {
+    const { unregisterFCMToken } = await import('./notifications');
+    await unregisterFCMToken();
+  } catch (err) {
+    console.warn('Unable to unregister FCM token:', err);
+  }
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
 }
@@ -177,7 +187,12 @@ export async function updateUserProfile(uid: string, updates: Partial<PartnerPro
   if (updates.isOnboarded !== undefined) dbUpdates.is_onboarded = updates.isOnboarded;
   if (updates.isApproved !== undefined) dbUpdates.is_approved = updates.isApproved;
   if (updates.hasUploadedDocs !== undefined) dbUpdates.has_uploaded_docs = updates.hasUploadedDocs;
-  if (updates.profileData !== undefined) dbUpdates.profile_data = updates.profileData;
+  if (updates.profileData !== undefined) {
+    dbUpdates.profile_data = updates.profileData;
+    const profileData = updates.profileData as Record<string, unknown>;
+    const city = extractCity(profileData.city || profileData.location);
+    if (city) dbUpdates.city = city;
+  }
   if (updates.documents !== undefined) dbUpdates.documents = updates.documents;
   if (updates.kycVideoUrl !== undefined) dbUpdates.kyc_video_url = updates.kycVideoUrl;
   if (updates.createdAt !== undefined) dbUpdates.created_at = updates.createdAt;

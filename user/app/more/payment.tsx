@@ -118,6 +118,7 @@ export default function PaymentScreen() {
     partnerId,
     coupon,
     discountAmount,
+    bookingId: existingBookingId, // guide-first flow: booking already exists
   } = useLocalSearchParams<{
     amount: string;
     description: string;
@@ -128,7 +129,11 @@ export default function PaymentScreen() {
     partnerId: string;
     coupon?: string;
     discountAmount?: string;
+    bookingId?: string; // set when paying for a pre-created booking
   }>();
+
+  // Guide-first flow: booking already exists, just need to pay
+  const isGuideFirstFlow = Boolean(existingBookingId);
 
   const amountInRupees = Number.parseFloat(amount || '0') || 0;
 
@@ -188,7 +193,8 @@ export default function PaymentScreen() {
       return;
     }
 
-    if (bookingPayload.amount <= 0) {
+    const amountToCheck = isGuideFirstFlow ? amountInRupees : bookingPayload.amount;
+    if (!isGuideFirstFlow && amountToCheck <= 0) {
       setPaymentStatus('failed');
       setStatusMessage('Invalid payment amount. Please go back and try again.');
       return;
@@ -198,7 +204,14 @@ export default function PaymentScreen() {
       setPaymentStatus('processing');
       setStatusMessage('Creating your Razorpay order...');
 
-      const order = await invokeFunction<CreateOrderResponse>('razorpay-create-order', bookingPayload);
+      // ── Create order ──
+      // Guide-first flow: pass bookingId so the server fetches amount from the booking.
+      // Legacy flow: pass full booking payload.
+      const orderBody = isGuideFirstFlow
+        ? { bookingId: existingBookingId }
+        : bookingPayload;
+
+      const order = await invokeFunction<CreateOrderResponse>('razorpay-create-order', orderBody);
 
       setStatusMessage('Opening Razorpay checkout...');
       const checkoutResult = await RazorpayCheckout.open({
@@ -206,7 +219,7 @@ export default function PaymentScreen() {
         amount: String(order.amount),
         currency: order.currency,
         name: 'Guide My Route',
-        description: bookingPayload.description,
+        description: isGuideFirstFlow ? (description || 'Guide Booking Payment') : bookingPayload.description,
         order_id: order.orderId,
         prefill: {
           name: user.displayName || user.user_metadata?.full_name || '',
@@ -222,12 +235,24 @@ export default function PaymentScreen() {
       }
 
       setStatusMessage('Verifying payment securely...');
-      const verified = await invokeFunction<VerifyPaymentResponse>('razorpay-verify-payment', {
-        booking: bookingPayload,
-        razorpay_payment_id: checkoutResult.razorpay_payment_id,
-        razorpay_order_id: checkoutResult.razorpay_order_id,
-        razorpay_signature: checkoutResult.razorpay_signature,
-      });
+
+      // ── Verify payment ──
+      // Guide-first flow: pass bookingId so the server updates the existing booking.
+      const verifyBody = isGuideFirstFlow
+        ? {
+            bookingId: existingBookingId,
+            razorpay_payment_id: checkoutResult.razorpay_payment_id,
+            razorpay_order_id: checkoutResult.razorpay_order_id,
+            razorpay_signature: checkoutResult.razorpay_signature,
+          }
+        : {
+            booking: bookingPayload,
+            razorpay_payment_id: checkoutResult.razorpay_payment_id,
+            razorpay_order_id: checkoutResult.razorpay_order_id,
+            razorpay_signature: checkoutResult.razorpay_signature,
+          };
+
+      const verified = await invokeFunction<VerifyPaymentResponse>('razorpay-verify-payment', verifyBody);
 
       setPaymentStatus('success');
       setStatusMessage(`Payment verified. Booking ${verified.bookingId} is confirmed.`);
@@ -237,7 +262,7 @@ export default function PaymentScreen() {
       }, 1800);
     } catch (error) {
       const message = isUserCancelledPayment(error)
-        ? 'Payment was cancelled. No booking was created.'
+        ? 'Payment was cancelled.'
         : getErrorMessage(error);
 
       console.error('Razorpay payment error:', error);
@@ -250,7 +275,7 @@ export default function PaymentScreen() {
     } finally {
       setIsRetrying(false);
     }
-  }, [bookingPayload, router, safeNavigate, user]);
+  }, [bookingPayload, existingBookingId, isGuideFirstFlow, description, router, safeNavigate, user, amountInRupees]);
 
   useEffect(() => {
     if (hasStarted.current || authLoading) return;

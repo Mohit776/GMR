@@ -6,15 +6,9 @@ import { listenToUserDoc } from '../services/auth';
 import { View, ActivityIndicator, Alert } from 'react-native';
 import { Colors } from '../constants/colors';
 import { supabase } from '../services/supabase';
-import {
-  registerFCMToken,
-  onTokenRefresh,
-  onForegroundMessage,
-  setBackgroundMessageHandler,
-} from '../services/notifications';
+import { NetworkBanner } from '../components/NetworkBanner';
 
-// Register background handler at module level (required by FCM)
-setBackgroundMessageHandler();
+import '../firebaseMessaging';
 
 export default function RootLayout() {
   const { user, profile, isInitialized, isProfileLoading, setUser, setProfile, setInitialized, setProfileLoading } =
@@ -23,9 +17,6 @@ export default function RootLayout() {
 
   const segments = useSegments();
   const navigationState = useRootNavigationState();
-
-  const tokenRefreshUnsub = useRef<(() => void) | null>(null);
-  const foregroundUnsub = useRef<(() => void) | null>(null);
 
   // Track redirect to prevent loops
   const lastRedirect = useRef<string | null>(null);
@@ -93,6 +84,15 @@ export default function RootLayout() {
     console.log('[Auth] Setting up onAuthStateChange listener');
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       console.log('[Auth] onAuthStateChange event:', _event);
+
+      // If token refresh failed (stale/invalid refresh token), sign out to clear
+      // the bad token from AsyncStorage and redirect to login cleanly.
+      if (_event === 'TOKEN_REFRESHED' && !session) {
+        console.warn('[Auth] Token refresh returned no session – signing out to clear stale tokens');
+        supabase.auth.signOut();
+        return;
+      }
+
       handleSession(session);
     });
 
@@ -102,8 +102,13 @@ export default function RootLayout() {
       .then(({ data: { session }, error }) => {
         if (error) {
           console.log('[Auth] getSession error:', error.message);
-          if (error.message.includes('Refresh Token Not Found')) {
+          if (
+            error.message.includes('Refresh Token Not Found') ||
+            error.message.includes('Invalid Refresh Token')
+          ) {
+            console.warn('[Auth] Invalid refresh token detected – signing out');
             supabase.auth.signOut();
+            return;
           }
         }
         console.log('[Auth] getSession result, hasFired:', hasFired, 'session:', !!session);
@@ -113,7 +118,11 @@ export default function RootLayout() {
       })
       .catch((err) => {
         console.warn('[Auth] getSession exception:', err);
-        if (err?.message?.includes('Refresh Token Not Found')) {
+        if (
+          err?.message?.includes('Refresh Token Not Found') ||
+          err?.message?.includes('Invalid Refresh Token')
+        ) {
+          console.warn('[Auth] Clearing stale tokens via signOut');
           supabase.auth.signOut();
         }
         if (!hasFired) {
@@ -129,43 +138,7 @@ export default function RootLayout() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─── FCM Setup ──────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!userUid) {
-      // Clean up listeners when logged out
-      if (tokenRefreshUnsub.current) {
-        tokenRefreshUnsub.current();
-        tokenRefreshUnsub.current = null;
-      }
-      if (foregroundUnsub.current) {
-        foregroundUnsub.current();
-        foregroundUnsub.current = null;
-      }
-      return;
-    }
 
-    // Register token
-    registerFCMToken(userUid);
-
-    // Listen for token refresh
-    tokenRefreshUnsub.current = onTokenRefresh(userUid);
-
-    // Listen for foreground messages
-    foregroundUnsub.current = onForegroundMessage((title, body, data) => {
-      Alert.alert(title, body);
-    });
-
-    return () => {
-      if (tokenRefreshUnsub.current) {
-        tokenRefreshUnsub.current();
-        tokenRefreshUnsub.current = null;
-      }
-      if (foregroundUnsub.current) {
-        foregroundUnsub.current();
-        foregroundUnsub.current = null;
-      }
-    };
-  }, [userUid]); // Use uid instead of user object to avoid reference changes
 
   // ─── Navigate after initialization ──────────────────────────────────────────
   useEffect(() => {
@@ -221,6 +194,39 @@ export default function RootLayout() {
     lastRedirect.current = null;
   }, [userUid, profile?.isOnboarded]);
 
+  useEffect(() => {
+    if (!userUid || !isInitialized) return;
+    let cleanup: (() => void) | undefined;
+
+    import('../services/notifications').then(({ initNotifications, handleNotificationTap }) => {
+      initNotifications(userUid).then((fn) => {
+        cleanup = fn;
+      });
+
+      import('@react-native-firebase/messaging').then((messagingModule) => {
+        const messaging = messagingModule.default;
+        
+        messaging().getInitialNotification().then((msg) => {
+          handleNotificationTap(msg, router);
+        });
+
+        const unsub = messaging().onNotificationOpenedApp((msg) => {
+          handleNotificationTap(msg, router);
+        });
+
+        const oldCleanup = cleanup;
+        cleanup = () => {
+          oldCleanup?.();
+          unsub();
+        };
+      });
+    });
+
+    return () => {
+      cleanup?.();
+    };
+  }, [userUid, isInitialized]);
+
   // Show splash while initializing
   if (!isInitialized) {
     return (
@@ -233,6 +239,7 @@ export default function RootLayout() {
 
   return (
     <>
+      <NetworkBanner />
       <Stack screenOptions={{ headerShown: false }} />
       <StatusBar style="auto" />
     </>

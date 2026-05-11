@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -14,8 +14,13 @@ import { Spacing, Radius, FontSize } from '../../constants/theme';
 
 import {
   getBookings,
+  listenToBookings,
   updateBookingStatus,
+  getBookingRequests,
+  listenToBookingRequests,
+  acceptBookingRequest,
   type Booking,
+  type BookingRequest,
   type BookingStatus,
 } from '../../services/firestore';
 import { useFocusEffect } from 'expo-router';
@@ -29,8 +34,7 @@ import {
   FileText, 
   Compass, 
   Hotel, 
-  Bike,
-  ChevronRight
+  Bike
 } from 'lucide-react-native';
 import { Text } from '../../components/Text';
 
@@ -52,18 +56,25 @@ const statusConfig: Record<BookingStatus, { color: string; label: string; Icon: 
 export default function BookingsScreen() {
   const { user, refreshProfile } = useAuthStore();
   const userUid = user?.uid;
+  const [activeTab, setActiveTab] = useState<'requests' | 'bookings'>('requests');
+  const [requests, setRequests] = useState<BookingRequest[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<BookingStatus | 'all'>('all');
   const [updating, setUpdating] = useState<string | null>(null);
 
-  const loadBookings = useCallback(async () => {
+  const loadData = useCallback(async () => {
     if (!userUid) return;
     try {
-      setBookings(await getBookings(userUid));
+      const [b, r] = await Promise.all([
+        getBookings(userUid),
+        getBookingRequests(userUid)
+      ]);
+      setBookings(b);
+      setRequests(r);
     } catch (error) {
-      console.warn('Failed to load bookings:', error);
+      console.warn('Failed to load data:', error);
     } finally {
       setLoading(false);
     }
@@ -72,15 +83,60 @@ export default function BookingsScreen() {
   const onRefresh = async () => {
     setRefreshing(true);
     await refreshProfile();
-    await loadBookings();
+    await loadData();
     setRefreshing(false);
   };
 
   useFocusEffect(
     useCallback(() => {
-      loadBookings();
-    }, [loadBookings])
+      loadData();
+    }, [loadData])
   );
+
+  useEffect(() => {
+    if (!userUid) return undefined;
+
+    const unsubscribeRequests = listenToBookingRequests(userUid, setRequests);
+    const unsubscribeBookings = listenToBookings(userUid, setBookings);
+
+    return () => {
+      unsubscribeRequests();
+      unsubscribeBookings();
+    };
+  }, [userUid]);
+
+  const handleAcceptRequest = async (bookingId: string) => {
+    Alert.alert(
+      'Accept Request',
+      'Are you sure you want to accept this booking request? If you are the first, it will be assigned to you.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Accept',
+          onPress: async () => {
+            setUpdating(bookingId);
+            try {
+              const res = await acceptBookingRequest(bookingId);
+              if (res.success) {
+                if (res.alreadyAccepted) {
+                   Alert.alert('Info', 'You have already accepted this request. Waiting for user payment.');
+                } else {
+                   Alert.alert('Success', 'You accepted the request! The user has been notified to make the payment.');
+                }
+              } else if (res.reason === 'already_taken') {
+                Alert.alert('Too late', 'Another guide has already taken this booking.');
+              }
+              await loadData();
+            } catch {
+              Alert.alert('Error', 'Failed to accept request.');
+            } finally {
+              setUpdating(null);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const filtered =
     filter === 'all' ? bookings : bookings.filter((b) => b.status === filter);
@@ -98,7 +154,7 @@ export default function BookingsScreen() {
             setUpdating(bookingId);
             try {
               await updateBookingStatus(bookingId, status);
-              await loadBookings();
+              await loadData();
             } catch {
               Alert.alert('Error', 'Failed to update booking status.');
             } finally {
@@ -119,11 +175,27 @@ export default function BookingsScreen() {
           <Text style={styles.subtitle}>Manage your incoming requests</Text>
         </View>
         <View style={styles.countBadge}>
-          <Text style={styles.countText}>{bookings.length}</Text>
+          <Text style={styles.countText}>{requests.length + bookings.length}</Text>
         </View>
       </View>
 
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'requests' && styles.tabButtonActive]}
+          onPress={() => setActiveTab('requests')}
+        >
+          <Text style={[styles.tabText, activeTab === 'requests' && styles.tabTextActive]}>Requests ({requests.length})</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'bookings' && styles.tabButtonActive]}
+          onPress={() => setActiveTab('bookings')}
+        >
+          <Text style={[styles.tabText, activeTab === 'bookings' && styles.tabTextActive]}>My Bookings ({bookings.length})</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Filters */}
+      {activeTab === 'bookings' && (
       <View style={styles.filtersContainer}>
         <FlatList
           data={FILTERS}
@@ -143,11 +215,36 @@ export default function BookingsScreen() {
           )}
         />
       </View>
+      )}
 
       {loading ? (
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>
+      ) : activeTab === 'requests' ? (
+        requests.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <View style={styles.emptyIconWrap}>
+              <Inbox color={Colors.primary} size={40} />
+            </View>
+            <Text style={styles.emptyTitle}>No requests found</Text>
+            <Text style={styles.emptySubtext}>New booking requests will appear here.</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={requests}
+            keyExtractor={(r) => r.id}
+            contentContainerStyle={styles.list}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+            renderItem={({ item }) => (
+              <RequestItem
+                request={item}
+                updating={updating === item.bookingId}
+                onAccept={() => handleAcceptRequest(item.bookingId)}
+              />
+            )}
+          />
+        )
       ) : filtered.length === 0 ? (
         <View style={styles.emptyWrap}>
           <View style={styles.emptyIconWrap}>
@@ -184,6 +281,80 @@ export default function BookingsScreen() {
           )}
         />
       )}
+    </View>
+  );
+}
+
+function RequestItem({
+  request,
+  updating,
+  onAccept,
+}: {
+  request: BookingRequest;
+  updating: boolean;
+  onAccept: () => void;
+}) {
+  const formattedPrice = request.amount.toLocaleString('en-IN', {
+    maximumFractionDigits: 0,
+    style: 'currency',
+    currency: 'INR',
+  });
+
+  return (
+    <View style={biStyles.card}>
+      <View style={biStyles.cardHeader}>
+        <View style={biStyles.typeInfo}>
+          <Compass size={14} color={Colors.textMuted} />
+          <Text style={biStyles.typeText}>{request.itemName.toUpperCase()}</Text>
+        </View>
+        <View style={[biStyles.statusIndicator, { backgroundColor: '#F59E0B15' }]}>
+          <View style={[biStyles.statusDot, { backgroundColor: '#F59E0B' }]} />
+          <Text style={[biStyles.statusText, { color: '#F59E0B' }]}>NEW REQUEST</Text>
+        </View>
+      </View>
+
+      <View style={biStyles.cardBody}>
+        <View style={biStyles.mainInfo}>
+          <Text style={biStyles.guestName}>{request.guestName}</Text>
+          <Text style={biStyles.priceText}>{formattedPrice}</Text>
+        </View>
+
+        <View style={biStyles.detailRow}>
+          <View style={biStyles.detailItem}>
+            <CalendarDays size={14} color={Colors.textMuted} />
+            <Text style={biStyles.detailText}>{request.date}</Text>
+          </View>
+          <View style={biStyles.detailItem}>
+             <Compass size={14} color={Colors.textMuted} />
+             <Text style={biStyles.detailText}>{request.city}</Text>
+          </View>
+        </View>
+
+        {request.note ? (
+           <View style={{...biStyles.detailRow, marginTop: -8}}>
+            <View style={biStyles.detailItem}>
+              <FileText size={14} color={Colors.textMuted} />
+              <Text style={biStyles.detailText} numberOfLines={1}>{request.note}</Text>
+            </View>
+          </View>
+        ) : null}
+
+        {updating ? (
+          <View style={biStyles.updatingWrap}>
+            <ActivityIndicator size="small" color={Colors.primary} />
+          </View>
+        ) : (
+          <View style={biStyles.actionsContainer}>
+             <TouchableOpacity
+               style={biStyles.primaryAction}
+               onPress={onAccept}
+               activeOpacity={0.7}
+             >
+               <Text style={biStyles.primaryActionText}>Accept Request</Text>
+             </TouchableOpacity>
+          </View>
+        )}
+      </View>
     </View>
   );
 }
@@ -455,6 +626,31 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontSize: FontSize.sm,
     fontWeight: '700',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabButtonActive: {
+    borderBottomColor: Colors.primary,
+  },
+  tabText: {
+    fontSize: FontSize.md,
+    fontWeight: '600',
+    color: Colors.textMuted,
+  },
+  tabTextActive: {
+    color: Colors.primary,
   },
   filtersContainer: {
     paddingVertical: Spacing.sm,

@@ -160,7 +160,7 @@ export default function PartnerDetailClient({ partner }: { partner: any }) {
           {/* Uploaded Documents */}
           {partner.documents && partner.documents.length > 0 ? (
             partner.documents.map((docUrl: string, index: number) => (
-              <div key={index} className="border border-gray-200 rounded-xl p-4 flex flex-col justify-between h-32 relative">
+              <div key={index} className="border border-gray-200 rounded-xl p-4 flex flex-col justify-between min-h-[8rem] relative">
                 <div className="flex justify-between items-start">
                   <span className="text-sm font-medium text-gray-700">Document {index + 1}</span>
                   <CheckCircle className="w-5 h-5 text-green-500" />
@@ -184,8 +184,25 @@ export default function PartnerDetailClient({ partner }: { partner: any }) {
               </div>
             ))
           ) : (
-            <div className="col-span-1 md:col-span-2 border border-gray-200 rounded-xl p-4 flex items-center justify-center h-32 text-gray-500 text-sm">
+            <div className="col-span-1 md:col-span-2 border border-gray-200 rounded-xl p-4 flex items-center justify-center min-h-[8rem] text-gray-500 text-sm">
               No documents uploaded
+            </div>
+          )}
+
+          {/* KYC Video URL */}
+          {partner.kycVideoUrl ? (
+            <div className="col-span-1 md:col-span-2 border border-gray-200 rounded-xl p-4 flex flex-col justify-between relative mt-4">
+               <div className="flex justify-between items-start mb-4">
+                  <span className="text-sm font-medium text-gray-700">KYC Video Verification</span>
+                  <CheckCircle className="w-5 h-5 text-green-500" />
+                </div>
+                <div className="w-full max-w-md mx-auto rounded-lg overflow-hidden bg-black aspect-video flex-shrink-0">
+                  <video src={partner.kycVideoUrl} controls className="w-full h-full object-contain" preload="metadata" />
+                </div>
+            </div>
+          ) : (
+            <div className="col-span-1 md:col-span-2 border border-gray-200 rounded-xl p-4 flex items-center justify-center min-h-[8rem] text-gray-500 text-sm mt-4">
+              No KYC video uploaded
             </div>
           )}
         </div>

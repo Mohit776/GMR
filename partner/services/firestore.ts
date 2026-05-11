@@ -2,6 +2,91 @@ import { supabase } from './supabase';
 
 export type BookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled';
 
+export interface BookingRequest {
+  id: string;
+  bookingId: string;
+  status: 'pending' | 'accepted' | 'taken';
+  city: string;
+  guestName: string;
+  date: string;
+  amount: number;
+  itemName: string;
+  note?: string;
+  createdAt: string;
+}
+
+function mapBookingRequest(row: any): BookingRequest {
+  const b = row.bookings ?? {};
+  return {
+    id: row.id,
+    bookingId: row.booking_id,
+    status: row.status || 'pending',
+    city: b.city || '',
+    guestName: b.guest_name || 'Guest Traveler',
+    date: b.date || (b.created_at ? b.created_at.split('T')[0] : ''),
+    amount: Number(b.amount ?? b.price ?? 0),
+    itemName: b.item_name || 'Trip',
+    note: b.note || '',
+    createdAt: row.created_at || '',
+  };
+}
+
+export async function getBookingRequests(guideId: string): Promise<BookingRequest[]> {
+  const { data, error } = await supabase
+    .from('booking_requests')
+    .select('*, bookings(city, guest_name, date, amount, price, item_name, note, created_at)')
+    .eq('guide_id', guideId)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(mapBookingRequest);
+}
+
+export function listenToBookingRequests(
+  guideId: string,
+  callback: (requests: BookingRequest[]) => void
+) {
+  let active = true;
+  const refresh = () => {
+    getBookingRequests(guideId)
+      .then((rows) => {
+        if (active) callback(rows);
+      })
+      .catch(console.warn);
+  };
+
+  refresh();
+
+  const channel = supabase
+    .channel(`partner_booking_requests_${guideId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'booking_requests',
+        filter: `guide_id=eq.${guideId}`,
+      },
+      refresh
+    )
+    .subscribe();
+
+  return () => {
+    active = false;
+    supabase.removeChannel(channel);
+  };
+}
+
+export async function acceptBookingRequest(
+  bookingId: string
+): Promise<{ success: boolean; reason?: string; alreadyAccepted?: boolean }> {
+  const { data, error } = await supabase.functions.invoke('accept-booking-request', {
+    body: { bookingId },
+  });
+  if (error) throw error;
+  return data;
+}
+
 export interface Booking {
   id: string;
   type: 'guide' | 'hotel' | 'rental';
@@ -64,13 +149,33 @@ export async function getBookings(partnerId: string): Promise<Booking[]> {
 
 export function listenToBookings(partnerId: string, callback: (bookings: Booking[]) => void) {
   let active = true;
-  getBookings(partnerId)
-    .then((rows) => {
-      if (active) callback(rows);
-    })
-    .catch(console.warn);
+  const refresh = () => {
+    getBookings(partnerId)
+      .then((rows) => {
+        if (active) callback(rows);
+      })
+      .catch(console.warn);
+  };
+
+  refresh();
+
+  const channel = supabase
+    .channel(`partner_bookings_${partnerId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'bookings',
+        filter: `partner_id=eq.${partnerId}`,
+      },
+      refresh
+    )
+    .subscribe();
+
   return () => {
     active = false;
+    supabase.removeChannel(channel);
   };
 }
 

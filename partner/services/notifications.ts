@@ -1,86 +1,90 @@
+import messaging, { FirebaseMessagingTypes } from '@react-native-firebase/messaging';
+import * as ExpoNotifications from 'expo-notifications';
 import { Platform } from 'react-native';
-import Constants from 'expo-constants';
-import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
 import { supabase } from './supabase';
+import { Router } from 'expo-router';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+const CHANNEL_ID = 'gmr-default';
 
-export function setBackgroundMessageHandler() {
-  return undefined;
-}
+export async function initNotifications(userId: string): Promise<() => void> {
+  const authStatus = await messaging().requestPermission();
+  const enabled =
+    authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+    authStatus === messaging.AuthorizationStatus.PROVISIONAL;
 
-export async function registerFCMToken(userId: string) {
-  if (!userId || Platform.OS === 'web' || !Device.isDevice) return null;
-
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-  if (finalStatus !== 'granted') return null;
-
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'Default',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#16A34A',
-    });
+  if (!enabled) {
+    console.log('[FCM] Permission not granted');
+    return () => {};
   }
 
-  // Get raw device push token (FCM token on Android, APNs token on iOS)
-  const tokenResponse = await Notifications.getDevicePushTokenAsync();
-  const token = tokenResponse.data;
+  try {
+    const token = await messaging().getToken();
+    console.log('[FCM] Got token:', token ? token.substring(0, 20) + '...' : 'null');
+    if (token) {
+      const { error } = await supabase.rpc('register_fcm_token', { p_token: token });
+      if (error) {
+        console.error('[FCM] Failed to register token via RPC:', error.message);
+      } else {
+        console.log('[FCM] Token registered successfully for user:', userId);
+      }
+    }
+  } catch (err) {
+    console.error('[FCM] Failed to get or register FCM token:', err);
+  }
 
-  await supabase.from('push_tokens').upsert(
-    {
-      token,
-      user_id: userId,
-      platform: Platform.OS,
-      device_name: Device.deviceName,
-      app: 'partner',
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'token' }
-  );
-
-  const { data: profile } = await supabase.from('users').select('fcm_tokens').eq('id', userId).maybeSingle();
-  const tokens = Array.from(new Set([...(profile?.fcm_tokens || []), token]));
-  await supabase.from('users').update({ fcm_tokens: tokens }).eq('id', userId);
-
-  console.log('[Push] FCM token successfully saved in the DB');
-
-  return token;
-}
-
-export function onTokenRefresh(_userId: string) {
-  return () => undefined;
-}
-
-export function onForegroundMessage(handler: (title: string, body: string, data?: unknown) => void) {
-  const subscription = Notifications.addNotificationReceivedListener((notification) => {
-    handler(
-      notification.request.content.title || 'Notification',
-      notification.request.content.body || '',
-      notification.request.content.data
-    );
+  const unsubscribeRefresh = messaging().onTokenRefresh(async (newToken) => {
+    try {
+      await supabase.rpc('register_fcm_token', { p_token: newToken });
+    } catch (err) {
+      console.error('[FCM] Failed to update refreshed token:', err);
+    }
   });
-  return () => subscription.remove();
+
+  // Foreground FCM messages — schedule a local notification so it shows as a heads-up banner
+  const unsubscribeForeground = messaging().onMessage(async (remoteMessage) => {
+    console.log('[FCM] ▶ Foreground message:', JSON.stringify(remoteMessage.data));
+    const title =
+      (remoteMessage.data?.title as string) ||
+      remoteMessage.notification?.title ||
+      'GMR Partner';
+    const body =
+      (remoteMessage.data?.body as string) ||
+      remoteMessage.notification?.body ||
+      'You have a new notification.';
+
+    await ExpoNotifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        data: remoteMessage.data ?? {},
+        sound: 'default',
+        ...(Platform.OS === 'android' && { channelId: CHANNEL_ID }),
+      },
+      trigger: null,
+    }).catch((err) => console.error('[FCM] foreground scheduleNotification failed:', err));
+  });
+
+  return () => {
+    unsubscribeRefresh();
+    unsubscribeForeground();
+  };
 }
 
-export async function notifyUser(userId: string, title: string, body: string, data?: Record<string, string>) {
-  const { error } = await supabase.functions.invoke('send-push', {
-    body: { userId, title, body, data },
-  });
-  if (error) console.warn('Push function error:', error.message);
+export async function handleNotificationTap(
+  remoteMessage: FirebaseMessagingTypes.RemoteMessage | null,
+  router: Router
+): Promise<void> {
+  if (!remoteMessage) return;
+  router.push('/(tabs)/bookings');
+}
+
+export async function unregisterFCMToken(): Promise<void> {
+  try {
+    const token = await messaging().getToken();
+    if (token) {
+      await supabase.rpc('unregister_fcm_token', { p_token: token });
+    }
+  } catch (err) {
+    console.error('[FCM] Failed to unregister FCM token:', err);
+  }
 }

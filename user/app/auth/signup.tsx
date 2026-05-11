@@ -11,7 +11,9 @@ import {
   Alert,
   StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from '../../components/Text';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
@@ -99,8 +101,9 @@ export default function SignUpScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
+    <SafeAreaView style={styles.flex}>
+      <KeyboardAvoidingView
+        style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
@@ -110,10 +113,7 @@ export default function SignUpScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Back */}
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
-          <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
-        </TouchableOpacity>
+     
 
         {/* Header */}
         <View style={styles.header}>
@@ -130,28 +130,8 @@ export default function SignUpScreen() {
         {/* Form Card */}
         <View style={styles.card}>
           {/* Google First */}
-          <TouchableOpacity
-            style={[styles.googleBtn, googleLoading && styles.btnDisabled]}
-            onPress={handleGoogleSignUp}
-            disabled={googleLoading}
-            activeOpacity={0.85}
-          >
-            {googleLoading ? (
-              <ActivityIndicator color={COLORS.textPrimary} size="small" />
-            ) : (
-              <>
-                <MaterialCommunityIcons name="google" size={20} color="#EA4335" style={{ marginRight: 10 }} />
-                <Text style={styles.googleBtnText}>Continue with Google</Text>
-              </>
-            )}
-          </TouchableOpacity>
 
-          {/* Divider */}
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or sign up with email</Text>
-            <View style={styles.dividerLine} />
-          </View>
+
 
           {/* Full Name */}
           <View style={styles.fieldGroup}>
@@ -177,7 +157,7 @@ export default function SignUpScreen() {
               <Ionicons name="mail-outline" size={18} color={COLORS.textMuted} style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
-                placeholder="you@example.com"
+                placeholder="you@email.com"
                 placeholderTextColor={COLORS.textMuted}
                 value={email}
                 onChangeText={setEmail}
@@ -238,6 +218,8 @@ export default function SignUpScreen() {
             </View>
           </View>
 
+
+
           {/* Sign Up Button */}
           <TouchableOpacity
             style={[styles.primaryBtn, loading && styles.btnDisabled]}
@@ -251,6 +233,31 @@ export default function SignUpScreen() {
               <Text style={styles.primaryBtnText}>Create Account</Text>
             )}
           </TouchableOpacity>
+
+
+
+          {/* Divider */}
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or sign up with Google</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.googleBtn, googleLoading && styles.btnDisabled]}
+            onPress={handleGoogleSignUp}
+            disabled={googleLoading}
+            activeOpacity={0.85}
+          >
+            {googleLoading ? (
+              <ActivityIndicator color={COLORS.textPrimary} size="small" />
+            ) : (
+              <>
+                <Text style={styles.googleBtnText}>Continue with </Text>
+                <Image source={require('@/assets/svg/Google.png')} style={styles.googleIcon} />
+              </>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* Footer */}
@@ -262,6 +269,7 @@ export default function SignUpScreen() {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -281,25 +289,27 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     marginBottom: 24,
   },
+  googleIcon: {
+    width: 50,
+    height: 50,
+    resizeMode: 'contain',
+    marginRight: 8,
+  },
 
-  header: { marginBottom: 32 },
+  header: { marginBottom: 32,marginTop:25 },
   logoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
   brand: { fontSize: 20, fontWeight: '800', color: COLORS.textPrimary, marginLeft: 8 },
   brandGreen: { color: COLORS.primary },
-  title: { fontSize: 28, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 6 },
+  title: { fontSize: 26, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 4 },
   subtitle: { fontSize: 15, color: COLORS.textSecondary, fontWeight: '400' },
 
   card: {
     backgroundColor: COLORS.card,
     borderRadius: 20,
     padding: 24,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: COLORS.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
+   
   },
 
   fieldGroup: { marginBottom: 18 },
@@ -329,7 +339,7 @@ const styles = StyleSheet.create({
   primaryBtnText: { color: COLORS.white, fontSize: 16, fontWeight: '700' },
   btnDisabled: { opacity: 0.6 },
 
-  divider: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, marginTop: 4 },
+  divider: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, marginTop: 15 },
   dividerLine: { flex: 1, height: 1, backgroundColor: COLORS.border },
   dividerText: { fontSize: 12, color: COLORS.textMuted, marginHorizontal: 12, fontWeight: '500' },
 

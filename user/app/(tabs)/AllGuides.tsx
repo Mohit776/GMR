@@ -153,15 +153,7 @@ export default function AllGuidesScreen() {
 
           {/* ── Top App Bar ── */}
             <AppBar />
-      {/* App Bar */}
-      <View style={styles.appBar}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color={COLORS.darkGray} />
-        </TouchableOpacity>
-        <Text style={styles.appBarTitle}>All Guides</Text>
-        <View style={{ width: 36 }} />
-      </View>
-
+  
       {/* Search and Filter */}
       <View style={styles.searchFilterContainer}>
         <View style={styles.searchBox}>

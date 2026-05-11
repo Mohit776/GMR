@@ -2,12 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { supabaseAdmin } from './supabase-server';
-import {
-  notifyPartnerApproved,
-  notifyUserBookingCancelled,
-  notifyPartnerNewBooking,
-  notifyUserBookingConfirmed,
-} from './notifications';
+
 
 export async function deleteUser(uid: string) {
   try {
@@ -39,8 +34,7 @@ export async function approvePartner(uid: string) {
       .eq('id', uid);
     if (error) throw error;
 
-    // Send push notification to the partner
-    await notifyPartnerApproved(uid);
+
 
     revalidatePath('/partners');
     return { success: true };
@@ -122,12 +116,7 @@ export async function cancelBooking(id: string) {
       .eq('id', id);
     if (error) throw error;
 
-    // Notify the user that their booking was cancelled
-    if (bookingData?.user_id) {
-      await notifyUserBookingCancelled(bookingData.user_id, {
-        itemName: bookingData.item_name || bookingData.listing_id || 'your booking',
-      });
-    }
+
 
     revalidatePath('/bookings');
     return { success: true };

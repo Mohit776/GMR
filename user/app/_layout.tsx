@@ -4,24 +4,18 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
-import {
-  registerFCMToken,
-  onTokenRefresh,
-  onForegroundMessage,
-  setBackgroundMessageHandler,
-} from '../utils/notifications';
+
+import '../firebaseMessaging';
+
+import { NetworkBanner } from '../components/NetworkBanner';
 
 SplashScreen.preventAutoHideAsync();
 
-// Register background handler at module level (required by FCM)
-setBackgroundMessageHandler();
 
 function RootLayoutNav() {
   const { user, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
-  const tokenRefreshUnsub = useRef<(() => void) | null>(null);
-  const foregroundUnsub = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (loading) return;
@@ -37,51 +31,49 @@ function RootLayoutNav() {
     }
   }, [user, loading, router, segments]);
 
-  // ─── FCM Setup ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!user) {
-      // Clean up listeners when logged out
-      if (tokenRefreshUnsub.current) {
-        tokenRefreshUnsub.current();
-        tokenRefreshUnsub.current = null;
-      }
-      if (foregroundUnsub.current) {
-        foregroundUnsub.current();
-        foregroundUnsub.current = null;
-      }
-      return;
-    }
+    if (!user?.uid) return;
+    let cleanup: (() => void) | undefined;
 
-    // Register token
-    registerFCMToken(user.uid);
+    import('../utils/notifications').then(({ initNotifications, handleNotificationTap }) => {
+      initNotifications(user.uid).then((fn) => {
+        cleanup = fn;
+      });
 
-    // Listen for token refresh
-    tokenRefreshUnsub.current = onTokenRefresh(user.uid);
+      import('@react-native-firebase/messaging').then((messagingModule) => {
+        const messaging = messagingModule.default;
+        
+        messaging().getInitialNotification().then((msg) => {
+          handleNotificationTap(msg, router);
+        });
 
-    // Listen for foreground messages
-    foregroundUnsub.current = onForegroundMessage((title, body, data) => {
-      Alert.alert(title, body);
+        const unsub = messaging().onNotificationOpenedApp((msg) => {
+          handleNotificationTap(msg, router);
+        });
+
+        const oldCleanup = cleanup;
+        cleanup = () => {
+          oldCleanup?.();
+          unsub();
+        };
+      });
     });
 
     return () => {
-      if (tokenRefreshUnsub.current) {
-        tokenRefreshUnsub.current();
-        tokenRefreshUnsub.current = null;
-      }
-      if (foregroundUnsub.current) {
-        foregroundUnsub.current();
-        foregroundUnsub.current = null;
-      }
+      cleanup?.();
     };
-  }, [user]);
+  }, [user?.uid, router]);
 
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#fff' } }}>
-      <Stack.Screen name="index" />
-      <Stack.Screen name="auth" />
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="more" />
-    </Stack>
+    <>
+      <NetworkBanner />
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#fff' } }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="auth" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="more" />
+      </Stack>
+    </>
   );
 }
 

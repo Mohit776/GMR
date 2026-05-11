@@ -11,7 +11,7 @@ const COLORS = {
   iconBg: '#1B4332',       // Darker Green for icon background
   white: '#FFFFFF',
   textSecondary: '#D1D5DB', // Light gray
-  glassBg: 'rgba(20, 20, 20, 0.75)',
+  glassBg: 'rgba(30, 30, 30, 0.65)',
 };
 
 export default function WelcomeScreen() {
@@ -20,14 +20,14 @@ export default function WelcomeScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-      
-      <ImageBackground 
-        source={require('../../assets/images/slash.png')} 
+
+      <ImageBackground
+        source={require('../../assets/images/slash.png')}
         style={styles.backgroundImage}
         resizeMode="cover"
       >
         <LinearGradient
-          colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.85)', 'rgba(0,0,0,1)']}
+          colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.8)']}
           style={styles.gradient}
         >
           {/* ── Header Section (Logo/Title) ── */}
@@ -82,7 +82,7 @@ export default function WelcomeScreen() {
           </View>
 
           {/* ── Get Started Button ── */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.getStartedButton}
             activeOpacity={0.85}
             onPress={() => router.push('/auth/signup')}
@@ -106,7 +106,7 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#121212',
   },
   backgroundImage: {
     flex: 1,
@@ -120,7 +120,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     paddingTop: 80,
   },
-  
+
   // Header
   headerContainer: {
     position: 'absolute',

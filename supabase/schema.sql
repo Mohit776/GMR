@@ -22,6 +22,7 @@ create table if not exists public.users (
   is_onboarded boolean not null default false,
   has_uploaded_docs boolean not null default false,
   is_online boolean not null default false,
+  city text,
   rating numeric not null default 0,
   reviews integer not null default 0,
   profile_data jsonb not null default '{}'::jsonb,
@@ -80,15 +81,7 @@ create table if not exists public.bookings (
   updated_at timestamptz not null default now()
 );
 
-create table if not exists public.push_tokens (
-  token text primary key,
-  user_id uuid not null references public.users(id) on delete cascade,
-  platform text,
-  device_name text,
-  app text not null default 'unknown',
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+
 
 create index if not exists users_role_idx on public.users(role);
 create index if not exists listings_partner_id_idx on public.listings(partner_id);
@@ -96,12 +89,12 @@ create index if not exists listings_type_active_idx on public.listings(type, is_
 create index if not exists bookings_user_id_idx on public.bookings(user_id);
 create index if not exists bookings_partner_id_idx on public.bookings(partner_id);
 create unique index if not exists bookings_payment_id_unique_idx on public.bookings(payment_id) where payment_id is not null and payment_id <> '';
-create index if not exists push_tokens_user_id_idx on public.push_tokens(user_id);
+
 
 alter table public.users enable row level security;
 alter table public.listings enable row level security;
 alter table public.bookings enable row level security;
-alter table public.push_tokens enable row level security;
+
 
 create or replace function public.current_user_role()
 returns public.app_role
@@ -189,11 +182,7 @@ with check (
   or public.current_user_role() = 'admin'
 );
 
-drop policy if exists "Users manage own push tokens" on public.push_tokens;
-create policy "Users manage own push tokens"
-on public.push_tokens for all
-using (user_id = auth.uid() or public.current_user_role() = 'admin')
-with check (user_id = auth.uid() or public.current_user_role() = 'admin');
+
 
 insert into storage.buckets (id, name, public)
 values

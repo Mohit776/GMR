@@ -25,6 +25,7 @@ export default function BookingsClient({ bookings }: { bookings: Booking[] }) {
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
   const stats = [
     { label: 'Completed', value: bookings.filter(b => b.status === 'completed').length, icon: CheckCircle2, iconBg: 'bg-green-100', iconColor: 'text-green-600' },
@@ -100,6 +101,20 @@ export default function BookingsClient({ bookings }: { bookings: Booking[] }) {
       ),
     },
     {
+      key: 'payment',
+      header: 'Payment',
+      render: (b) => (
+        <div className="flex flex-col gap-0.5">
+          <span className="font-semibold text-gray-800">{b.amount}</span>
+          {b.paymentProvider ? (
+             <span className="text-[10px] text-gray-500 uppercase tracking-wider">{b.paymentProvider} • {b.paymentVerifiedAt ? 'Verified' : 'Unverified'}</span>
+          ) : (
+            <span className="text-[10px] text-gray-400 uppercase tracking-wider">No Provider</span>
+          )}
+        </div>
+      ),
+    },
+    {
       key: 'guests',
       header: 'Guests',
       render: (b) => (
@@ -107,11 +122,6 @@ export default function BookingsClient({ bookings }: { bookings: Booking[] }) {
           {b.guests}
         </span>
       ),
-    },
-    {
-      key: 'amount',
-      header: 'Amount',
-      render: (b) => <span className="font-semibold text-gray-800">{b.amount}</span>,
     },
     {
       key: 'status',
@@ -122,9 +132,10 @@ export default function BookingsClient({ bookings }: { bookings: Booking[] }) {
       key: 'actions',
       header: 'Actions',
       className: 'text-right',
-      render: () => (
+      render: (b) => (
         <button
           title="View"
+          onClick={() => setSelectedBooking(b)}
           className="p-2 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
         >
           <Eye className="w-4 h-4" />
@@ -134,6 +145,7 @@ export default function BookingsClient({ bookings }: { bookings: Booking[] }) {
   ];
 
   return (
+    <>
     <div className="p-6 pb-10 space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {stats.map((s) => <StatCard key={s.label} {...s} />)}
@@ -222,5 +234,74 @@ export default function BookingsClient({ bookings }: { bookings: Booking[] }) {
         </div>
       )}
     </div>
+
+    {selectedBooking && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedBooking(null)}>
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-800">Booking {selectedBooking.id}</h3>
+            <button onClick={() => setSelectedBooking(null)} className="text-gray-400 hover:text-gray-600 transition-colors">
+              <XCircle className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="p-6 space-y-4 text-sm text-gray-600">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <span className="block text-gray-400 text-xs uppercase tracking-wider mb-1">Client</span>
+                <span className="font-medium text-gray-800">{selectedBooking.client}</span>
+              </div>
+              <div>
+                <span className="block text-gray-400 text-xs uppercase tracking-wider mb-1">Partner</span>
+                <span className="font-medium text-gray-800">{selectedBooking.partner}</span>
+              </div>
+              <div>
+                <span className="block text-gray-400 text-xs uppercase tracking-wider mb-1">Listing</span>
+                <span className="font-medium text-gray-800">{selectedBooking.listing}</span>
+              </div>
+              <div>
+                <span className="block text-gray-400 text-xs uppercase tracking-wider mb-1">Status</span>
+                <StatusBadge status={selectedBooking.status} />
+              </div>
+              <div>
+                <span className="block text-gray-400 text-xs uppercase tracking-wider mb-1">Date & Time</span>
+                <span className="font-medium text-gray-800">{selectedBooking.dateTime}</span>
+              </div>
+              <div>
+                <span className="block text-gray-400 text-xs uppercase tracking-wider mb-1">Guests</span>
+                <span className="font-medium text-gray-800">{selectedBooking.guests}</span>
+              </div>
+              <div>
+                <span className="block text-gray-400 text-xs uppercase tracking-wider mb-1">Amount</span>
+                <span className="font-medium text-gray-800">{selectedBooking.amount}</span>
+              </div>
+            </div>
+            
+            <hr className="border-gray-100 my-4" />
+            
+            <h4 className="font-semibold text-gray-800 mb-2">Payment Details (Razorpay)</h4>
+            <div className="grid grid-cols-2 gap-4">
+               <div>
+                <span className="block text-gray-400 text-xs uppercase tracking-wider mb-1">Provider</span>
+                <span className="font-medium text-gray-800">{selectedBooking.paymentProvider || 'N/A'}</span>
+              </div>
+              <div>
+                <span className="block text-gray-400 text-xs uppercase tracking-wider mb-1">Order ID</span>
+                <span className="font-medium text-gray-800">{selectedBooking.razorpayOrderId || 'N/A'}</span>
+              </div>
+               <div className="col-span-2">
+                <span className="block text-gray-400 text-xs uppercase tracking-wider mb-1">Payment Verified At</span>
+                <span className="font-medium text-gray-800">{selectedBooking.paymentVerifiedAt ? new Date(selectedBooking.paymentVerifiedAt).toLocaleString() : 'Not Verified'}</span>
+              </div>
+            </div>
+          </div>
+          <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end">
+            <button onClick={() => setSelectedBooking(null)} className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium">
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

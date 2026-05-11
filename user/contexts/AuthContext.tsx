@@ -163,6 +163,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (data.user) await upsertUserProfile(data.user);
     },
     signOut: async () => {
+      try {
+        const { unregisterFCMToken } = await import('../utils/notifications');
+        await unregisterFCMToken();
+      } catch (err) {
+        console.warn('Unable to unregister FCM token:', err);
+      }
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       setUser(null);
