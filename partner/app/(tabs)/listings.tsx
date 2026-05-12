@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Image,
+  Switch,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -27,9 +28,11 @@ import {
   updateListing,
   type Listing,
 } from '../../services/firestore';
-import { Compass, Hotel, Bike, Plus, Trash2, X, FileText, Image as ImageIcon, Camera, Edit2 } from 'lucide-react-native';
+import { Compass, Hotel, Bike, Plus, Trash2, X, FileText, Image as ImageIcon, Camera, Edit2, DollarSign, Clock, Play, Upload } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadToSupabase } from '../../services/storage';
+import { supabase } from '../../services/supabase';
+import { useVideoPlayer, VideoView } from 'expo-video';
 
 export default function ListingsScreen() {
   const { user, profile, refreshProfile } = useAuthStore();
@@ -204,6 +207,10 @@ export default function ListingsScreen() {
     setShowModal(true);
   };
 
+  if (role === 'guide') {
+    return <GuideSettingsView profile={profile} user={user} refreshProfile={refreshProfile} />;
+  }
+
   return (
     <View style={styles.safe}>
       {/* Header */}
@@ -331,7 +338,7 @@ export default function ListingsScreen() {
               <Text style={styles.label}>Title *</Text>
               <TextInput
                 style={[styles.input, focusedField === 'title' && styles.inputFocused]}
-                placeholder={role === 'guide' ? 'e.g. Heritage City Walk' : role === 'hotel' ? 'e.g. Deluxe Double Room' : 'e.g. Royal Enfield Bullet 350'}
+                placeholder={role === 'hotel' ? 'e.g. Deluxe Double Room' : 'e.g. Royal Enfield Bullet 350'}
                 placeholderTextColor={Colors.textLight}
                 value={form.title}
                 onChangeText={(v) => setForm({ ...form, title: v })}
@@ -365,36 +372,6 @@ export default function ListingsScreen() {
                 onBlur={() => setFocusedField(null)}
               />
 
-              {/* ── Guide-specific fields ── */}
-              {role === 'guide' && (
-                <>
-                  <Text style={styles.sectionHeader}>Tour Details</Text>
-
-                  <Text style={styles.label}>Duration * (e.g. 3 hours, Full Day)</Text>
-                  <TextInput style={[styles.input, focusedField === 'duration' && styles.inputFocused]}
-                    placeholder="e.g. 4 hours" placeholderTextColor={Colors.textLight}
-                    value={form.details.duration ?? ''} onChangeText={(v) => setDetail('duration', v)}
-                    onFocus={() => setFocusedField('duration')} onBlur={() => setFocusedField(null)} />
-
-                  <Text style={[styles.label, { marginTop: Spacing.md }]}>Meeting Point *</Text>
-                  <TextInput style={[styles.input, focusedField === 'meetingPoint' && styles.inputFocused]}
-                    placeholder="e.g. Main Bazaar Gate, Jaipur" placeholderTextColor={Colors.textLight}
-                    value={form.details.meetingPoint ?? ''} onChangeText={(v) => setDetail('meetingPoint', v)}
-                    onFocus={() => setFocusedField('meetingPoint')} onBlur={() => setFocusedField(null)} />
-
-                  <Text style={[styles.label, { marginTop: Spacing.md }]}>Max Group Size</Text>
-                  <TextInput style={[styles.input, focusedField === 'groupSize' && styles.inputFocused]}
-                    placeholder="e.g. 10" placeholderTextColor={Colors.textLight} keyboardType="numeric"
-                    value={form.details.groupSize ?? ''} onChangeText={(v) => setDetail('groupSize', v)}
-                    onFocus={() => setFocusedField('groupSize')} onBlur={() => setFocusedField(null)} />
-
-                  <Text style={[styles.label, { marginTop: Spacing.md }]}>Tour Type (Private / Group / Both)</Text>
-                  <TextInput style={[styles.input, focusedField === 'tourType' && styles.inputFocused]}
-                    placeholder="e.g. Private" placeholderTextColor={Colors.textLight}
-                    value={form.details.tourType ?? ''} onChangeText={(v) => setDetail('tourType', v)}
-                    onFocus={() => setFocusedField('tourType')} onBlur={() => setFocusedField(null)} />
-                </>
-              )}
 
               {/* ── Hotel-specific fields ── */}
               {role === 'hotel' && (
@@ -577,6 +554,282 @@ export default function ListingsScreen() {
     </View>
   );
 }
+
+function GuideVideoPlayer({ url }: { url: string }) {
+  const [playing, setPlaying] = useState(false);
+  const player = useVideoPlayer(url, (p) => {
+    p.loop = false;
+  });
+
+  const toggle = () => {
+    if (playing) {
+      player.pause();
+      setPlaying(false);
+    } else {
+      player.play();
+      setPlaying(true);
+    }
+  };
+
+  const filename = decodeURIComponent(url.split('/').pop() || 'demo_video.mp4');
+
+  return (
+    <View style={gs.videoBox}>
+      <VideoView player={player} style={gs.videoPlayer} contentFit="contain" nativeControls={false} />
+      <TouchableOpacity style={gs.videoOverlay} onPress={toggle} activeOpacity={0.8}>
+        <View style={gs.videoPlayBtn}>
+          {playing
+            ? <View style={{ flexDirection: 'row', gap: 5 }}>
+                <View style={{ width: 4, height: 18, backgroundColor: Colors.white, borderRadius: 2 }} />
+                <View style={{ width: 4, height: 18, backgroundColor: Colors.white, borderRadius: 2 }} />
+              </View>
+            : <Play color={Colors.white} size={22} style={{ marginLeft: 3 }} />
+          }
+        </View>
+      </TouchableOpacity>
+      <View style={gs.videoNameBar}>
+        <Text style={gs.videoName} numberOfLines={1}>{filename}</Text>
+      </View>
+    </View>
+  );
+}
+
+function GuideSettingsView({ profile, user, refreshProfile }: {
+  profile: any; user: any; refreshProfile: () => Promise<any>;
+}) {
+  const pd = profile?.profileData || {};
+  const [rate, setRate] = useState(String(pd.per_hour_rate || ''));
+  const [avail, setAvail] = useState(pd.is_available !== false);
+  const [videoUrl, setVideoUrl] = useState(profile?.kycVideoUrl || '');
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    if (profile) {
+      const p = profile.profileData || {};
+      setRate(String(p.per_hour_rate || ''));
+      setAvail(p.is_available !== false);
+      setVideoUrl(profile.kycVideoUrl || '');
+    }
+  }, [profile]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refreshProfile();
+    setRefreshing(false);
+  };
+
+  const saveRate = async () => {
+    if (!user) return;
+    const n = parseFloat(rate);
+    if (!n || n <= 0) { Alert.alert('Invalid', 'Enter a valid hourly rate.'); return; }
+    setSaving(true);
+    try {
+      const updated = { ...(profile?.profileData || {}), per_hour_rate: n };
+      await supabase.from('users').update({
+        profile_data: updated, updated_at: new Date().toISOString(),
+      }).eq('id', user.uid);
+      await refreshProfile();
+      Alert.alert('Saved', 'Hourly rate updated.');
+    } catch (e: any) { Alert.alert('Error', e.message || 'Failed to save.'); }
+    finally { setSaving(false); }
+  };
+
+  const toggleAvail = async (v: boolean) => {
+    if (!user) return;
+    setAvail(v);
+    try {
+      const updated = { ...(profile?.profileData || {}), is_available: v };
+      await supabase.from('users').update({
+        profile_data: updated, updated_at: new Date().toISOString(),
+      }).eq('id', user.uid);
+      await refreshProfile();
+    } catch (e: any) { setAvail(!v); Alert.alert('Error', e.message || 'Failed.'); }
+  };
+
+  const replaceVideo = async () => {
+    if (!user) return;
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      allowsEditing: true, quality: 0.8,
+    });
+    if (res.canceled || !res.assets[0]?.uri) return;
+    setUploading(true);
+    try {
+      const uri = res.assets[0].uri;
+      const fname = uri.split('/').pop() || `demo_${Date.now()}.mp4`;
+      const url = await uploadToSupabase(uri, 'video/mp4', fname, 'demo-videos');
+      await supabase.from('users').update({
+        kyc_video_url: url, updated_at: new Date().toISOString(),
+      }).eq('id', user.uid);
+      setVideoUrl(url);
+      await refreshProfile();
+      Alert.alert('Success', 'Demo video updated.');
+    } catch (e: any) { Alert.alert('Error', e.message || 'Upload failed.'); }
+    finally { setUploading(false); }
+  };
+
+  return (
+    <View style={gs.safe}>
+      <ScrollView
+        contentContainerStyle={gs.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+      >
+        <View style={gs.headerSection}>
+          <View style={gs.titleRow}>
+            <Compass color={Colors.primary} size={28} />
+            <Text style={gs.title}>Guide Settings</Text>
+          </View>
+          <Text style={gs.subtitle}>Manage your rate, availability & demo video</Text>
+        </View>
+
+        {!profile?.isApproved && (
+          <View style={gs.banner}>
+            <Text style={gs.bannerText}>⏳ Your account is pending admin approval</Text>
+          </View>
+        )}
+
+        {/* Hourly Rate */}
+        <View style={gs.card}>
+          <View style={gs.cardHead}>
+            <View style={gs.iconCircle}><DollarSign color={Colors.primary} size={18} /></View>
+            <Text style={gs.cardTitle}>Per Hour Rate</Text>
+          </View>
+          <Text style={gs.cardDesc}>Set your hourly rate. Users will see this on your profile.</Text>
+          <View style={gs.rateRow}>
+            <Text style={gs.currency}>₹</Text>
+            <TextInput
+              style={gs.rateInput}
+              placeholder="e.g. 500"
+              placeholderTextColor={Colors.textLight}
+              value={rate}
+              onChangeText={setRate}
+              keyboardType="numeric"
+            />
+            <Text style={gs.rateUnit}>/ hour</Text>
+          </View>
+          <TouchableOpacity
+            style={[gs.saveBtn, saving && { opacity: 0.6 }]}
+            onPress={saveRate} disabled={saving} activeOpacity={0.85}
+          >
+            {saving ? <ActivityIndicator color={Colors.white} size="small" /> :
+              <Text style={gs.saveBtnText}>Save Rate</Text>}
+          </TouchableOpacity>
+        </View>
+
+        {/* Availability */}
+        <View style={gs.card}>
+          <View style={gs.cardHead}>
+            <View style={[gs.iconCircle, { backgroundColor: avail ? '#DCFCE7' : '#FEE2E2' }]}>
+              <Clock color={avail ? '#16A34A' : '#EF4444'} size={18} />
+            </View>
+            <Text style={gs.cardTitle}>Availability</Text>
+          </View>
+          <Text style={gs.cardDesc}>Toggle whether you're currently available for bookings.</Text>
+          <View style={gs.availRow}>
+            <View style={[gs.availBadge, { backgroundColor: avail ? '#DCFCE7' : '#FEE2E2' }]}>
+              <View style={[gs.availDot, { backgroundColor: avail ? '#16A34A' : '#EF4444' }]} />
+              <Text style={{ color: avail ? '#15803D' : '#DC2626', fontWeight: '700', fontSize: 14 }}>
+                {avail ? 'Available' : 'Unavailable'}
+              </Text>
+            </View>
+            <Switch
+              value={avail}
+              onValueChange={toggleAvail}
+              trackColor={{ false: '#D1D5DB', true: '#86EFAC' }}
+              thumbColor={avail ? '#16A34A' : '#9CA3AF'}
+            />
+          </View>
+        </View>
+
+        {/* Demo Video */}
+        <View style={gs.card}>
+          <View style={gs.cardHead}>
+            <View style={gs.iconCircle}><Camera color={Colors.primary} size={18} /></View>
+            <Text style={gs.cardTitle}>Demo Video</Text>
+          </View>
+          <Text style={gs.cardDesc}>Upload a short video introducing yourself to potential clients.</Text>
+          {videoUrl ? (
+            <GuideVideoPlayer url={videoUrl} />
+          ) : (
+            <View style={gs.noVideo}>
+              <Camera color={Colors.textMuted} size={32} />
+              <Text style={gs.noVideoText}>No demo video uploaded yet</Text>
+            </View>
+          )}
+          <TouchableOpacity
+            style={[gs.replaceBtn, uploading && { opacity: 0.6 }]}
+            onPress={replaceVideo} disabled={uploading} activeOpacity={0.85}
+          >
+            {uploading ? <ActivityIndicator color={Colors.primary} size="small" /> : (
+              <>
+                <Upload color={Colors.primary} size={16} />
+                <Text style={gs.replaceBtnText}>{videoUrl ? 'Replace Video' : 'Upload Video'}</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+    </View>
+  );
+}
+
+const gs = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: Colors.background },
+  scroll: { padding: Spacing.md },
+  headerSection: { marginBottom: Spacing.lg },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
+  title: { fontSize: FontSize.xl, fontWeight: '800', color: Colors.text },
+  subtitle: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 2, marginLeft: 38 },
+  banner: { backgroundColor: '#FEF3C7', borderRadius: Radius.md, padding: Spacing.md, marginBottom: Spacing.md },
+  bannerText: { color: '#92400E', fontWeight: '600', fontSize: FontSize.sm, textAlign: 'center' },
+  card: {
+    backgroundColor: Colors.white, borderRadius: 16, padding: 20, marginBottom: 16,
+    shadowColor: Colors.black, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 10, elevation: 3,
+  },
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  iconCircle: {
+    width: 36, height: 36, borderRadius: 10, backgroundColor: '#EFF6FF',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: Colors.text },
+  cardDesc: { fontSize: 13, color: Colors.textMuted, lineHeight: 19, marginBottom: 16 },
+  rateRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.background, borderRadius: Radius.md, borderWidth: 1.5, borderColor: Colors.border, marginBottom: 14 },
+  currency: { fontSize: 18, fontWeight: '700', color: Colors.text, paddingLeft: 14 },
+  rateInput: { flex: 1, fontSize: 18, fontWeight: '700', color: Colors.text, paddingVertical: 14, paddingHorizontal: 8 },
+  rateUnit: { fontSize: 14, color: Colors.textMuted, fontWeight: '600', paddingRight: 14 },
+  saveBtn: { backgroundColor: Colors.accent, borderRadius: Radius.full, paddingVertical: 14, alignItems: 'center' },
+  saveBtnText: { color: Colors.white, fontSize: FontSize.base, fontWeight: '700' },
+  availRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  availBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 100 },
+  availDot: { width: 8, height: 8, borderRadius: 4 },
+  videoBox: { backgroundColor: '#111827', borderRadius: 12, overflow: 'hidden', marginBottom: 14 },
+  videoPlayer: { width: '100%', height: 200 },
+  videoOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  videoPlayBtn: {
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  videoNameBar: {
+    backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12, paddingVertical: 8,
+  },
+  videoName: { color: '#9CA3AF', fontSize: 12, fontWeight: '500' },
+  noVideo: { alignItems: 'center', paddingVertical: 24, backgroundColor: Colors.background, borderRadius: 12, marginBottom: 14 },
+  noVideoText: { color: Colors.textMuted, fontSize: 13, marginTop: 8, fontWeight: '500' },
+  replaceBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    borderWidth: 1.5, borderColor: Colors.primary, borderRadius: Radius.full, paddingVertical: 12,
+  },
+  replaceBtnText: { color: Colors.primary, fontSize: FontSize.base, fontWeight: '700' },
+});
 
 function ListingCard({
   listing,

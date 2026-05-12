@@ -11,6 +11,8 @@ import {
   Alert,
   StatusBar,
 } from 'react-native';
+import { Image } from 'expo-image';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from '../../components/Text';
 import { useRouter } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -84,21 +86,19 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+    <SafeAreaView style={styles.flex}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        {/* Back */}
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
-          <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
-        </TouchableOpacity>
+        <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+  
 
         {/* Header */}
         <View style={styles.header}>
@@ -190,9 +190,11 @@ export default function LoginScreen() {
               <ActivityIndicator color={COLORS.textPrimary} size="small" />
             ) : (
               <>
-                <MaterialCommunityIcons name="google" size={20} color="#EA4335" style={{ marginRight: 10 }} />
-                <Text style={styles.googleBtnText}>Continue with Google</Text>
-              </>
+            
+                            <Text style={styles.googleBtnText}>Continue with </Text>
+                            <Image source={require('@/assets/svg/Google.png')} style={styles.googleIcon} />
+                          </>
+              
             )}
           </TouchableOpacity>
         </View>
@@ -205,7 +207,8 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -224,6 +227,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     marginBottom: 24,
+  },
+
+
+  googleIcon: {
+    width: 60,
+    height: 60,
+    resizeMode: 'contain',
   },
 
   header: { marginBottom: 32 },

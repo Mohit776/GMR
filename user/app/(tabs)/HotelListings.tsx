@@ -236,7 +236,7 @@ export default function HotelListingsScreen() {
   return (
     <View style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
-      <AppBar />
+    
 
       <View style={styles.filterTabsContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterTabsScroll}>

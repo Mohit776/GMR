@@ -1,21 +1,36 @@
 import { Ionicons } from '@expo/vector-icons';
+import { BottomTabBar } from '@react-navigation/bottom-tabs';
 import { Tabs, useRouter } from 'expo-router';
+import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ActiveBookingBar from '../../components/ActiveBookingBar';
+import AppBar from '../../components/AppBar';
+
+// ─── Custom Tab Bar with Active Booking Strip ──────────────────────────────────
+function CustomTabBar(props: React.ComponentProps<typeof BottomTabBar>) {
+  return (
+    <View>
+      <ActiveBookingBar />
+      <BottomTabBar {...props} />
+    </View>
+  );
+}
 
 export default function TabLayout() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  // Adjust padding and height based on the bottom safe area (e.g., home indicator or navigation bar)
   const bottomPadding = insets.bottom > 0 ? insets.bottom : 10;
   const tabHeight = 55 + bottomPadding;
 
   return (
     <Tabs
+      tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={{
-        headerShown: false,
+        headerShown: true,
+        header: () => <AppBar />,
         animation: 'shift',
-        tabBarActiveTintColor: '#16A34A', // COLORS.primary
-        tabBarInactiveTintColor: '#6B7280', // COLORS.mediumGray
+        tabBarActiveTintColor: '#16A34A',
+        tabBarInactiveTintColor: '#6B7280',
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
           borderTopWidth: 0,

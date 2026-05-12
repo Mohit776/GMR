@@ -66,28 +66,14 @@ const MENU_SECTIONS: MenuSection[] = [
     title: 'Account',
     items: [
       { id: '1', icon: '👤', label: 'Personal Information', type: 'navigate' },
-      { id: '2', icon: '💳', iconSource: require('../../assets/svg/payment-card-svgrepo-com.svg'), label: 'Payment Methods', type: 'navigate' },
       { id: '3', icon: '📋', iconSource: require('../../assets/svg/calender-svgrepo-com.svg'), label: 'My Bookings', type: 'navigate' },
       { id: '4', icon: '❤️', label: 'Saved Places', type: 'navigate' },
-    ],
-  },
-
-  {
-    title: 'Preferences',
-    items: [
-      { id: '7', icon: '🔔', iconSource: require('../../assets/svg/bell-svgrepo-com.svg'), label: 'Notifications', type: 'toggle' },
-      { id: '8', icon: '🌐', label: 'Language', type: 'navigate' },
-      { id: '9', icon: '⚙️', iconSource: require('../../assets/svg/setting-svgrepo-com.svg'), label: 'Settings', type: 'navigate' },
-    ],
-  },
-  {
-    title: 'Support',
-    items: [
       { id: '10', icon: '❓', iconSource: require('../../assets/svg/phone-call-svgrepo-com.svg'), label: 'Help & Support', type: 'navigate' },
       { id: '11', icon: '📄', iconSource: require('../../assets/svg/license-svgrepo-com.svg'), label: 'Terms & Privacy', type: 'navigate' },
       { id: '12', icon: '🚪', iconSource: require('../../assets/svg/logout-2-svgrepo-com.svg'), label: 'Log Out', type: 'danger' },
     ],
   },
+
 ];
 
 // ─── Menu Row ──────────────────────────────────────────────────────────────────
@@ -231,6 +217,10 @@ export default function ProfileScreen() {
       router.push('../more/personalInformation');
     } else if (item.id === '3') {
       router.push('../more/MyBookings');
+    } else if (item.id === '10') {
+      router.push('../extra/HelpSupport');
+    } else if (item.id === '11') {
+      router.push('../extra/TermsPrivacy');
     }
   };
 
@@ -238,8 +228,7 @@ export default function ProfileScreen() {
     <View style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
 
-      {/* ── Header Banner ── */}
-      <AppBar />
+     
 
       <ScrollView
         style={styles.scroll}
@@ -310,22 +299,6 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* ── Active Trip Banner ── */}
-        <TouchableOpacity style={styles.activeTripBanner} activeOpacity={0.88}>
-          <View style={styles.activeTripLeft}>
-            <View style={styles.activeDot} />
-            <View>
-              <Text style={styles.activeTripTitle}>Active Trip</Text>
-              <Text style={styles.activeTripSub}>
-                Royal Enfield · UK14F 7722 · Rishikesh
-              </Text>
-            </View>
-          </View>
-          <View style={styles.activeTripBtn}>
-            <Text style={styles.activeTripBtnText}>View →</Text>
-          </View>
-        </TouchableOpacity>
-
         {/* ── Menu Sections ── */}
         {MENU_SECTIONS.map((section) => (
           <View key={section.title} style={styles.menuSection}>
@@ -351,14 +324,14 @@ export default function ProfileScreen() {
 
         {/* devloper info */}
         <Text style={styles.appVersion}>Developed by Mohit Aggarwal</Text>
-       
+
 
         {/* Logging Out Overlay */}
         {loggingOut && (
           <View style={styles.loggingOutOverlay}>
             <ActivityIndicator color={COLORS.primary} size="small" />
             <Text style={styles.loggingOutText}>Logging out...</Text>
-          </View> 
+          </View>
         )}
 
         <View style={{ height: 20 }} />
@@ -438,7 +411,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 4,
     borderColor: COLORS.white,
-   
+
   },
   avatarInitials: {
     fontSize: 32,

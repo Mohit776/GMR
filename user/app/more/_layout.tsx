@@ -15,6 +15,7 @@ export default function MoreLayout() {
         }}
       />
       <Stack.Screen name="MyBookings" />
+      <Stack.Screen name="bookingDetail" />
     </Stack>
   );
 }

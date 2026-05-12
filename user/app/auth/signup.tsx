@@ -113,16 +113,11 @@ export default function SignUpScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-     
+
 
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.logoRow}>
-            <MaterialCommunityIcons name="map-marker" size={32} color={COLORS.primary} />
-            <Text style={styles.brand}>
-              Guide My <Text style={styles.brandGreen}>Route</Text>
-            </Text>
-          </View>
+
           <Text style={styles.title}>Create Account</Text>
           <Text style={styles.subtitle}>Join thousands of travellers exploring smarter</Text>
         </View>

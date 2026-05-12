@@ -34,12 +34,33 @@ function mapBookingRequest(row: any): BookingRequest {
 export async function getBookingRequests(guideId: string): Promise<BookingRequest[]> {
   const { data, error } = await supabase
     .from('booking_requests')
-    .select('*, bookings(city, guest_name, date, amount, price, item_name, note, created_at)')
+    .select('*, bookings(id, city, guest_name, date, amount, price, item_name, note, created_at, pre_payment_status, status)')
     .eq('guide_id', guideId)
     .eq('status', 'pending')
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data || []).map(mapBookingRequest);
+
+  const now = new Date().getTime();
+  const validRequests = [];
+
+  for (const row of data || []) {
+    const b = row.bookings || {};
+    
+    if (b.status === 'pending' && b.pre_payment_status === 'awaiting_guide' && b.created_at) {
+      const createdAt = new Date(b.created_at).getTime();
+      const diffMins = (now - createdAt) / (1000 * 60);
+      if (diffMins > 30) {
+        // Expired
+        await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', b.id);
+        await supabase.from('booking_requests').update({ status: 'expired' }).eq('booking_id', b.id);
+        continue;
+      }
+    }
+    
+    validRequests.push(mapBookingRequest(row));
+  }
+  
+  return validRequests;
 }
 
 export function listenToBookingRequests(
@@ -144,7 +165,25 @@ export async function getBookings(partnerId: string): Promise<Booking[]> {
     .eq('partner_id', partnerId)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data || []).map(mapBooking);
+
+  const now = new Date().getTime();
+  const validBookings = [];
+
+  for (const row of data || []) {
+    let rawStatus = row.status;
+    if (row.status === 'pending' && row.pre_payment_status === 'awaiting_guide' && row.created_at) {
+      const createdAt = new Date(row.created_at).getTime();
+      const diffMins = (now - createdAt) / (1000 * 60);
+      if (diffMins > 30) {
+        await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', row.id);
+        rawStatus = 'cancelled';
+      }
+    }
+    
+    validBookings.push(mapBooking({ ...row, status: rawStatus }));
+  }
+
+  return validBookings;
 }
 
 export function listenToBookings(partnerId: string, callback: (bookings: Booking[]) => void) {

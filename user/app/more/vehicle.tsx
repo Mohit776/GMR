@@ -1,240 +1,98 @@
-import { useRouter, useLocalSearchParams } from 'expo-router';
 import React, { useState, useEffect } from 'react';
-import AppBar from '../../components/AppBar';
 import {
   View,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   StatusBar,
-  Dimensions,
   ActivityIndicator,
-  Image,
+  Dimensions,
 } from 'react-native';
 import { Text } from '../../components/Text';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
+import { Image as ExpoImage } from 'expo-image';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../utils/supabase';
-import DateTimePicker from '@react-native-community/datetimepicker';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
+const HEADER_IMAGE_HEIGHT = 380;
 
-// ─── Color Palette ─────────────────────────────────────────────────────────────
-const COLORS = {
-  primary:    '#16A34A',
-  teal:       '#14B8A6',
-  skyBlue:    '#0EA5E9',
-  orange:     '#F97316',
-  white:      '#FFFFFF',
-  lightGray:  '#F1F5F9',
-  darkGray:   '#1F2937',
-  mediumGray: '#6B7280',
-  borderGray: '#E2E8F0',
-  danger:     '#EF4444',
-};
-
-// ─── Types ─────────────────────────────────────────────────────────────────────
-interface FeatureBadge {
-  icon:  string;
-  label: string;
+interface Vehicle {
+  id: string;
+  name: string;
+  type: string;
+  rating: number;
+  reviews: number;
+  pricePerDay: number;
+  emoji: string;
+  image: string;
+  images: string[];
+  location: string;
+  about: string;
+  fuelType?: string;
+  helmet?: string;
+  minDuration?: string;
+  deposit?: string;
+  specs: { label: string; value: string }[];
+  partnerId: string;
 }
 
-interface PriceRow {
-  label:    string;
-  amount:   number;
-  isTotal?: boolean;
-}
-
-// Default Constants Removed
-
-// ─── Star Rating ───────────────────────────────────────────────────────────────
-const StarRating = ({ rating, size = 13 }: { rating: number; size?: number }) => {
-  const full  = Math.floor(rating);
-  const half  = rating % 1 >= 0.5;
-  const empty = 5 - full - (half ? 1 : 0);
-  return (
-    <View style={styles.starRow}>
-      {Array(full).fill(0).map((_, i) => (
-        <Ionicons key={`f${i}`} name="star"         size={size} color="#FBBF24" />
-      ))}
-      {half && <Ionicons name="star-half"            size={size} color="#FBBF24" />}
-      {Array(empty).fill(0).map((_, i) => (
-        <Ionicons key={`e${i}`} name="star-outline"  size={size} color="#FBBF24" />
-      ))}
-    </View>
-  );
-};
-
-// ─── Section Title ─────────────────────────────────────────────────────────────
-const SectionTitle = ({ title }: { title: string }) => (
-  <Text style={styles.sectionTitle}>{title}</Text>
-);
-
-// ─── Feature Badge ─────────────────────────────────────────────────────────────
-const FeatureBadgeItem = ({ feature }: { feature: FeatureBadge }) => (
-  <View style={styles.featureBadge}>
-    <MaterialCommunityIcons name={feature.icon as any} size={16} color={COLORS.primary} />
-    <Text style={styles.featureBadgeText}>{feature.label}</Text>
-  </View>
-);
-
-// ─── Date Selector Card ────────────────────────────────────────────────────────
-const DateSelectorCard = ({
-  label,
-  date,
-  time,
-  icon,
-  onPress,
-}: {
-  label: string;
-  date:  string;
-  time:  string;
-  icon:  string;
-  onPress: () => void;
-}) => (
-  <TouchableOpacity style={styles.dateSelectorCard} activeOpacity={0.8} onPress={onPress}>
-    <View style={styles.dateSelectorIconBox}>
-      <Ionicons name={icon as any} size={18} color={COLORS.primary} />
-    </View>
-    <View style={styles.dateSelectorInfo}>
-      <Text style={styles.dateSelectorLabel}>{label}</Text>
-      <Text style={styles.dateSelectorDate}>{date}</Text>
-      <Text style={styles.dateSelectorTime}>{time}</Text>
-    </View>
-    <Feather name="chevron-down" size={16} color={COLORS.mediumGray} />
-  </TouchableOpacity>
-);
-
-// ─── Spec Row ──────────────────────────────────────────────────────────────────
-const SpecRow = ({
-  label,
-  value,
-  isLast,
-}: {
-  label:   string;
-  value:   string;
-  isLast:  boolean;
-}) => (
-  <View style={[styles.specRow, !isLast && styles.specRowBorder]}>
-    <Text style={styles.specLabel}>{label}</Text>
-    <Text style={styles.specValue}>{value}</Text>
-  </View>
-);
-
-// ─── Main Screen ───────────────────────────────────────────────────────────────
 export default function VehicleDetailScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const [vehicle, setVehicle] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [isSaved, setIsSaved] = useState(false);
+  const { id } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
-  const [activeTab, setActiveTab] = useState<'overview' | 'specs'>('specs');
-
-  const [pickupDate, setPickupDate] = useState<Date>(new Date());
-  const [dropoffDate, setDropoffDate] = useState<Date>(() => {
-    const nextDay = new Date();
-    nextDay.setDate(nextDay.getDate() + 1);
-    return nextDay;
-  });
-  const [showPicker, setShowPicker] = useState<{ visible: boolean, mode: 'date' | 'time', type: 'pickup' | 'dropoff' }>({ visible: false, mode: 'date', type: 'pickup' });
-
-  const calculateDays = (start: Date, end: Date) => {
-    const diffTime = end.getTime() - start.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays > 0 ? diffDays : 1;
-  };
-
-  const durationDays = calculateDays(pickupDate, dropoffDate);
-
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-  };
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const onChangePicker = (event: any, selectedDate?: Date) => {
-    setShowPicker({ ...showPicker, visible: false });
-    if (selectedDate) {
-      if (showPicker.type === 'pickup') {
-        if (showPicker.mode === 'date') {
-          const newDate = new Date(selectedDate);
-          newDate.setHours(pickupDate.getHours(), pickupDate.getMinutes());
-          setPickupDate(newDate);
-          // Optionally, automatically prompt for time after date is selected
-          // setTimeout(() => setShowPicker({ visible: true, mode: 'time', type: 'pickup' }), 500);
-        } else {
-          const newDate = new Date(pickupDate);
-          newDate.setHours(selectedDate.getHours(), selectedDate.getMinutes());
-          setPickupDate(newDate);
-        }
-      } else {
-        if (showPicker.mode === 'date') {
-          const newDate = new Date(selectedDate);
-          newDate.setHours(dropoffDate.getHours(), dropoffDate.getMinutes());
-          setDropoffDate(newDate);
-          // setTimeout(() => setShowPicker({ visible: true, mode: 'time', type: 'dropoff' }), 500);
-        } else {
-          const newDate = new Date(dropoffDate);
-          newDate.setHours(selectedDate.getHours(), selectedDate.getMinutes());
-          setDropoffDate(newDate);
-        }
-      }
-    }
-  };
+  
+  const [isSaved, setIsSaved] = useState(false);
+  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!id) return;
 
-    const applyVehicleData = (doc: any) => {
-      const details = doc.details || {};
-      const mappedFeatures: any[] = [];
-      if (details.fuelType) mappedFeatures.push({ icon: 'gas-station', label: details.fuelType });
-      if (details.helmet) mappedFeatures.push({ icon: 'racing-helmet', label: details.helmet === 'Yes' ? 'Helmet Provided' : 'No Helmet' });
-      if (details.minDuration) mappedFeatures.push({ icon: 'clock-outline', label: `Min ${details.minDuration} Day` });
-      if (mappedFeatures.length === 0) {
-        mappedFeatures.push(
-          { icon: 'speedometer', label: '150 km/day' },
-          { icon: 'shield-check', label: 'Verified' },
-          { icon: 'gas-station', label: 'Fuel Efficient' }
-        );
-      }
-      setVehicle({
-        id: doc.id,
-        name: doc.title || details.vehicleMake || 'Vehicle Details',
-        type: doc.category || 'Bike',
-        rating: doc.rating || 4.8,
-        reviews: doc.reviews || 124,
-        pricePerDay: doc.price || 0,
-        pickup: doc.location || 'Arambol, Goa',
-        freeCancellation: true,
-        description: doc.description || 'No description available for this vehicle.',
-        features: mappedFeatures,
-        partnerId: doc.partner_id || '',
-        specs: [
-          { label: 'Vehicle Make', value: details.vehicleMake || 'N/A' },
-          { label: 'Fuel Type', value: details.fuelType || 'N/A' },
-          { label: 'Helmet Provided', value: details.helmet || 'No' },
-          { label: 'Security Deposit', value: details.deposit ? `₹${details.deposit}` : 'N/A' },
-          { label: 'Min Duration', value: details.minDuration ? `${details.minDuration} Day(s)` : '1 Day' },
-        ],
-        image: doc.images?.[0] || null,
-      });
-    };
-
     const fetchVehicle = async () => {
-      const { data, error } = await supabase
-        .from('listings')
-        .select('*')
-        .eq('id', id)
-        .single();
-      if (error) {
-        console.error('Fetch Vehicle Detail Error:', error);
-      } else if (data) {
-        applyVehicleData(data);
+      try {
+        const { data: row, error } = await supabase
+          .from('listings')
+          .select('*')
+          .eq('id', id as string)
+          .single();
+
+        if (!error && row) {
+          const propertyType = row.category || 'Bike';
+          const details = row.details || {};
+          
+          setVehicle({
+            id: row.id,
+            name: row.title || details.vehicleMake || 'Unknown Vehicle',
+            type: propertyType,
+            rating: row.rating || 4.8,
+            reviews: row.reviews || 0,
+            pricePerDay: row.price || 0,
+            emoji: propertyType === 'Car' ? '🚗' : '🏍️',
+            image: row.images?.[0] || '',
+            images: row.images || [],
+            location: row.location || row.details?.address || 'Arambol, Goa',
+            about: row.description || row.details?.description || '',
+            fuelType: details.fuelType || '',
+            helmet: details.helmet || '',
+            minDuration: details.minDuration || '',
+            deposit: details.deposit ? `₹${details.deposit}` : '',
+            partnerId: row.partner_id || row.id,
+            specs: [
+              { label: 'Vehicle Make', value: details.vehicleMake || 'N/A' },
+              { label: 'Fuel Type', value: details.fuelType || 'N/A' },
+              { label: 'Helmet Provided', value: details.helmet || 'No' },
+              { label: 'Security Deposit', value: details.deposit ? `₹${details.deposit}` : 'N/A' },
+              { label: 'Min Duration', value: details.minDuration ? `${details.minDuration} Day(s)` : '1 Day' },
+            ].filter(s => s.value !== 'N/A'),
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching vehicle details:', error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     fetchVehicle();
@@ -242,364 +100,304 @@ export default function VehicleDetailScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.safeArea, { paddingTop: insets.top }]}>
-        <AppBar />
-        <View style={styles.loaderContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loaderText}>Loading details...</Text>
-        </View>
+      <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <ActivityIndicator size="large" color="#16A34A" />
       </View>
     );
   }
 
   if (!vehicle) {
     return (
-      <View style={[styles.safeArea, { paddingTop: insets.top }]}>
-        <AppBar />
-        <View style={styles.errorContainer}>
-          <MaterialCommunityIcons name="alert-circle-outline" size={60} color={COLORS.danger} />
-          <Text style={styles.errorText}>Vehicle not found</Text>
-          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-            <Text style={styles.backBtnText}>Go Back</Text>
-          </TouchableOpacity>
-        </View>
+      <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <Ionicons name="alert-circle-outline" size={64} color="#EF4444" />
+        <Text style={styles.notFoundText}>Vehicle not found</Text>
+        <Text style={styles.notFoundSub}>This listing might have been removed or is currently unavailable.</Text>
+        <TouchableOpacity onPress={() => router.back()} style={styles.goBackButton}>
+          <Text style={styles.goBackText}>Go Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
-  const priceRows: PriceRow[] = [
-    { label: `₹${vehicle.pricePerDay} x ${durationDays} Days`, amount: vehicle.pricePerDay * durationDays },
-    { label: 'Delivery Charges', amount: 100 },
-    { label: 'Total Amount', amount: vehicle.pricePerDay * durationDays + 100, isTotal: true },
-  ];
-
-  const totalAmount = priceRows[priceRows.length - 1].amount;
-
   return (
-    <View style={[styles.safeArea, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-      {/* ── Scrollable Content ── */}
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+      <ScrollView 
+        style={styles.scroll} 
+        contentContainerStyle={styles.scrollContent} 
         showsVerticalScrollIndicator={false}
+        bounces={false}
       >
-        {/* ── Header ── */}
-        <AppBar />
-
-        {/* ── Image Section ── */}
-        <View style={styles.imageSection}>
-          {vehicle.image ? (
-            <Image source={{ uri: vehicle.image }} style={styles.vehicleFullImage} />
-          ) : (
-            <View style={styles.imagePlaceholder}>
-              <MaterialCommunityIcons 
-                name={vehicle.type === 'Car' ? 'car' : 'motorbike'} 
-                size={80} 
-                color={COLORS.mediumGray} 
+        {/* ── Image Header ── */}
+        <View style={styles.imageContainer}>
+          {vehicle.images.length > 0 ? (
+            <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+              {vehicle.images.map((img, index) => (
+                <View key={index} style={{ width, height: HEADER_IMAGE_HEIGHT }}>
+                  <ExpoImage
+                    source={{ uri: img }}
+                    style={styles.image}
+                    contentFit="cover"
+                  />
+                  <View style={styles.imageOverlay} />
+                </View>
+              ))}
+            </ScrollView>
+          ) : vehicle.image ? (
+            <View style={{ width, height: HEADER_IMAGE_HEIGHT }}>
+              <ExpoImage
+                source={{ uri: vehicle.image }}
+                style={styles.image}
+                contentFit="cover"
               />
-              <Text style={styles.imagePlaceholderText}>No Image Available</Text>
+              <View style={styles.imageOverlay} />
+            </View>
+          ) : (
+            <View style={[styles.image, styles.fallbackImage]}>
+              <Text style={{ fontSize: 80 }}>{vehicle.emoji}</Text>
             </View>
           )}
 
-          {/* Overlay Header */}
-          <View style={[styles.imageOverlayHeader, { top: Math.max(insets.top, 12) + 8 }]}>
-            <TouchableOpacity style={styles.overlayBtn} activeOpacity={0.8} onPress={() => router.back()}>
-              <Ionicons name="arrow-back" size={20} color={COLORS.darkGray} />
+          {/* Floating Action Buttons */}
+          <View style={[styles.floatingHeader, { top: Math.max(insets.top, 20) }]}>
+            <TouchableOpacity 
+              style={styles.glassButton} 
+              onPress={() => router.back()} 
+              activeOpacity={0.7}
+            >
+              <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
             </TouchableOpacity>
-            <View style={styles.overlayHeaderRight}>
-              <TouchableOpacity style={styles.overlayBtn} activeOpacity={0.8}>
-                <Feather name="share-2" size={18} color={COLORS.darkGray} />
+            
+            <View style={styles.floatingRight}>
+              <TouchableOpacity style={styles.glassButton} activeOpacity={0.7}>
+                <Ionicons name="share-outline" size={22} color="#FFFFFF" />
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.overlayBtn}
-                activeOpacity={0.8}
-                onPress={() => setIsSaved((p) => !p)}
+              <TouchableOpacity 
+                style={[styles.glassButton, { marginLeft: 12 }]} 
+                onPress={() => setIsSaved(!isSaved)}
+                activeOpacity={0.7}
               >
-                <Ionicons
-                  name={isSaved ? 'heart' : 'heart-outline'}
-                  size={20}
-                  color={isSaved ? COLORS.danger : COLORS.darkGray}
+                <Ionicons 
+                  name={isSaved ? "heart" : "heart-outline"} 
+                  size={22} 
+                  color={isSaved ? "#EF4444" : "#FFFFFF"} 
                 />
               </TouchableOpacity>
             </View>
           </View>
-
-          {/* Rating Chip on Image */}
-          <View style={styles.ratingChipOnImage}>
-            <Ionicons name="star" size={12} color="#FBBF24" />
-            <Text style={styles.ratingChipText}>{vehicle.rating}</Text>
-          </View>
         </View>
 
-        {/* ── Title Block ── */}
-        <View style={styles.titleBlock}>
-          <View style={styles.titleRow}>
-            <Text style={styles.vehicleName}>{vehicle.name}</Text>
-          </View>
-
-          <View style={styles.titleMetaRow}>
-            <StarRating rating={vehicle.rating} />
-            <Text style={styles.reviewCount}>{vehicle.rating} ({vehicle.reviews} reviews)</Text>
-          </View>
-
-          <View style={styles.pickupRow}>
-            <View style={styles.locationIconBox}>
-              <Ionicons name="location" size={14} color={COLORS.primary} />
+        {/* ── Content Container (Overlapping Image) ── */}
+        <View style={styles.contentContainer}>
+          
+          {/* Title & Type */}
+          <View style={styles.headerSection}>
+            <View style={styles.typeBadge}>
+              <Text style={styles.typeText}>{vehicle.type.toUpperCase()}</Text>
             </View>
-            <Text style={styles.pickupText}>{vehicle.pickup}</Text>
+            <Text style={styles.vehicleName}>{vehicle.name}</Text>
+            
+            <View style={styles.metaRow}>
+              <View style={styles.ratingBadge}>
+                <Ionicons name="star" size={14} color="#FFFFFF" />
+                <Text style={styles.ratingTextMain}>
+                  {vehicle.rating > 0 ? vehicle.rating.toFixed(1) : 'New'}
+                </Text>
+              </View>
+              {vehicle.rating > 0 && (
+                <Text style={styles.reviewCount}>({vehicle.reviews} reviews)</Text>
+              )}
+              
+              {vehicle.location ? (
+                <>
+                  <View style={styles.metaDot} />
+                  <Ionicons name="location" size={14} color="#6B7280" />
+                  <Text style={styles.locationText} numberOfLines={1}>
+                    {vehicle.location}
+                  </Text>
+                </>
+              ) : null}
+            </View>
           </View>
-        </View>
 
-        {/* ── Feature Badges ── */}
-        <View style={styles.featuresRow}>
-          {vehicle.features.map((f: any, idx: number) => (
-            <FeatureBadgeItem key={idx} feature={f} />
-          ))}
-        </View>
-
-        {/* ── Tab Toggle ── */}
-        <View style={styles.tabToggleContainer}>
-          {(['overview', 'specs'] as const).map((t) => (
-            <TouchableOpacity
-              key={t}
-              style={[styles.tabToggleBtn, activeTab === t && styles.tabToggleBtnActive]}
-              onPress={() => setActiveTab(t)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.tabToggleText, activeTab === t && styles.tabToggleTextActive]}>
-                {t === 'overview' ? 'Overview' : 'Specifications'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* ── Overview Tab ── */}
-        {activeTab === 'overview' && (
-          <View style={styles.card}>
-            <Text style={styles.descriptionText}>{vehicle.description}</Text>
-          </View>
-        )}
-
-        {/* ── Specs Tab ── */}
-        {activeTab === 'specs' && (
-          <View style={styles.card}>
-            {vehicle.specs.length > 0 ? vehicle.specs.map((spec: any, idx: number) => (
-              <SpecRow
-                key={idx}
-                label={spec.label}
-                value={spec.value}
-                isLast={idx === vehicle.specs.length - 1}
-              />
-            )) : (
-              <Text style={styles.descriptionText}>No specifications listed.</Text>
+          {/* ── Highlights Grid ── */}
+          <View style={styles.highlightsWrapper}>
+            <Text style={styles.sectionTitle}>Key features</Text>
+            <View style={styles.highlightsGrid}>
+              {!!vehicle.fuelType && (
+                <View style={styles.highlightCard}>
+                  <View style={styles.highlightIconBg}>
+                    <Ionicons name="water" size={22} color="#16A34A" />
+                  </View>
+                  <Text style={styles.highlightLabel}>Fuel Type</Text>
+                  <Text style={styles.highlightValue}>{vehicle.fuelType}</Text>
+                </View>
+              )}
+              {!!vehicle.helmet && (
+                <View style={styles.highlightCard}>
+                  <View style={styles.highlightIconBg}>
+                    <Ionicons name="shield-checkmark" size={22} color="#3B82F6" />
+                  </View>
+                  <Text style={styles.highlightLabel}>Helmet</Text>
+                  <Text style={styles.highlightValue}>{vehicle.helmet}</Text>
+                </View>
+              )}
+              {!!vehicle.minDuration && (
+                <View style={styles.highlightCard}>
+                  <View style={styles.highlightIconBg}>
+                    <Ionicons name="time" size={22} color="#8B5CF6" />
+                  </View>
+                  <Text style={styles.highlightLabel}>Min. Duration</Text>
+                  <Text style={styles.highlightValue}>{vehicle.minDuration} Day(s)</Text>
+                </View>
+              )}
+              {!!vehicle.deposit && (
+                <View style={styles.highlightCard}>
+                  <View style={styles.highlightIconBg}>
+                    <Ionicons name="wallet" size={22} color="#F59E0B" />
+                  </View>
+                  <Text style={styles.highlightLabel}>Deposit</Text>
+                  <Text style={styles.highlightValue}>{vehicle.deposit}</Text>
+                </View>
+              )}
+            </View>
+            
+            {/* Fallback if no highlights */}
+            {(!vehicle.fuelType && !vehicle.helmet && !vehicle.minDuration && !vehicle.deposit) && (
+              <Text style={styles.emptyText}>Standard vehicle conditions apply.</Text>
             )}
           </View>
-        )}
 
-        {/* ── Select Dates ── */}
-        {/* <View style={styles.section}>
-          <SectionTitle title="Select Dates" />
-          <View style={styles.dateRow}>
-            <DateSelectorCard
-              label="Pickup"
-              date={formatDate(pickupDate)}
-              time={formatTime(pickupDate)}
-              icon="calendar-outline"
-              onPress={() => setShowPicker({ visible: true, mode: 'date', type: 'pickup' })}
-            />
-            <View style={styles.dateSeparator}>
-              <View style={styles.dateSeparatorLine} />
-              <View style={styles.dateSeparatorDot} />
-              <View style={styles.dateSeparatorLine} />
+          {/* ── About Section ── */}
+          {vehicle.about ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>About this vehicle</Text>
+              <Text style={styles.aboutText}>{vehicle.about}</Text>
             </View>
-            <DateSelectorCard
-              label="Drop-off"
-              date={formatDate(dropoffDate)}
-              time={formatTime(dropoffDate)}
-              icon="flag-outline"
-              onPress={() => setShowPicker({ visible: true, mode: 'date', type: 'dropoff' })}
-            />
-          </View> */}
+          ) : null}
 
-          {/* Duration Chip */}
-          {/* <View style={styles.durationChip}>
-            <Ionicons name="time-outline" size={14} color={COLORS.teal} />
-            <Text style={styles.durationChipText}>
-              Duration: <Text style={{ fontWeight: '700', color: COLORS.teal }}>{durationDays} Days</Text>
-            </Text>
-          </View>
-        </View> */}
-
-        {/* ── Price Breakdown ── */}
-        {/* <View style={styles.section}>
-          <SectionTitle title="Price Details" />
-          <View style={styles.card}>
-            {priceRows.map((row, idx) => (
-              <View key={idx}>
-                {row.isTotal && <View style={styles.priceDivider} />}
-                <View style={[styles.priceRow, row.isTotal && styles.priceRowTotal]}>
-                  <Text style={[styles.priceRowLabel, row.isTotal && styles.priceRowLabelTotal]}>
-                    {row.label}
-                  </Text>
-                  <Text style={[styles.priceRowAmount, row.isTotal && styles.priceRowAmountTotal]}>
-                    ₹{row.amount.toLocaleString()}
-                  </Text>
-                </View>
+          {/* ── Specifications ── */}
+          {vehicle.specs && vehicle.specs.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Specifications</Text>
+              <View style={styles.amenitiesList}>
+                {vehicle.specs.map((item, index) => (
+                  <View key={index} style={styles.amenityItem}>
+                    <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
+                    <Text style={styles.amenityText}>{item.label}: {item.value}</Text>
+                  </View>
+                ))}
               </View>
-            ))}
-          </View>
-        </View> */}
+            </View>
+          )}
 
-
-
-
-
-        <View style={{ height: 100 }} />
+          {/* ── Photo Gallery ── */}
+          {vehicle.images && vehicle.images.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Photo Gallery</Text>
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false} 
+                contentContainerStyle={styles.galleryContainer}
+              >
+                {vehicle.images.map((img: string, index: number) => (
+                  <ExpoImage 
+                    key={index} 
+                    source={{ uri: img }} 
+                    style={styles.galleryImage} 
+                    contentFit="cover" 
+                  />
+                ))}
+              </ScrollView>
+            </View>
+          )}
+          
+          <View style={styles.bottomSpacer} />
+        </View>
       </ScrollView>
 
-      {/* Date Picker Modal */}
-      {showPicker.visible && (
-        <DateTimePicker
-          value={showPicker.type === 'pickup' ? pickupDate : dropoffDate}
-          mode={showPicker.mode}
-          display="default"
-          onChange={onChangePicker}
-          minimumDate={showPicker.type === 'dropoff' ? pickupDate : new Date()}
-        />
-      )}
-
-      {/* ── Sticky Bottom CTA ── */}
-      <View style={[styles.bottomCTA, { paddingBottom: Math.max(insets.bottom, 18) }]}>
-
-        <TouchableOpacity
-          style={styles.bookPayBtn}
-          activeOpacity={0.88}
-          onPress={() => {
-            router.push({
-              pathname: '/more/checkout',
-              params: {
-                bookingType: 'vehicle',
-                itemId: id || '',
-                itemName: vehicle.name,
-                pricePerUnit: String(vehicle.pricePerDay),
-                partnerId: vehicle.partnerId || id || '',
-                unitLabel: 'day',
-              },
-            });
-          }}
-        >
-          <Ionicons name="lock-closed-outline" size={16} color={COLORS.white} />
-          <Text style={styles.bookPayBtnText}>Book & Pay Now</Text>
-        </TouchableOpacity>
+      {/* ── Bottom Booking Bar ── */}
+      <View style={[styles.bottomBarWrapper, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+        <View style={styles.bottomBar}>
+          <View style={styles.priceContainer}>
+            {vehicle.pricePerDay > 0 ? (
+              <>
+                <Text style={styles.priceLabel}>Price</Text>
+                <Text style={styles.priceText}>
+                  ₹{vehicle.pricePerDay.toLocaleString('en-IN')} <Text style={styles.perDay}>/ day</Text>
+                </Text>
+                <Text style={styles.priceSubtext}>Taxes & fees not included</Text>
+              </>
+            ) : (
+              <Text style={styles.priceText}>Price on request</Text>
+            )}
+          </View>
+          
+          <TouchableOpacity
+            style={styles.bookButton}
+            activeOpacity={0.8}
+            onPress={() => {
+              if (vehicle.pricePerDay > 0) {
+                router.push({
+                  pathname: '/more/checkout',
+                  params: {
+                    bookingType: 'vehicle',
+                    itemId: vehicle.id,
+                    itemName: vehicle.name,
+                    pricePerUnit: String(vehicle.pricePerDay),
+                    partnerId: vehicle.partnerId,
+                    unitLabel: 'day',
+                  },
+                });
+              }
+            }}
+          >
+            <Text style={styles.bookButtonText}>Book Now</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
 }
 
-// ─── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  safeArea: {
-    flex:            1,
-    backgroundColor: COLORS.white,
-  },
-
-  // Loader & Error
-  loaderContainer: {
+  container: {
     flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 24,
   },
-  loaderText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: COLORS.mediumGray,
-    fontWeight: '500',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    fontSize: 18,
+  notFoundText: {
+    fontSize: 20,
     fontWeight: '700',
-    color: COLORS.darkGray,
+    color: '#1F2937',
     marginTop: 16,
   },
-  backBtn: {
-    marginTop: 20,
-    backgroundColor: COLORS.primary,
+  notFoundSub: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 24,
+  },
+  goBackButton: {
+    backgroundColor: '#F3F4F6',
     paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 8,
   },
-  backBtnText: {
-    color: COLORS.white,
-    fontWeight: '700',
-  },
-  vehicleFullImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-
-  // Image Section
-  imageSection: {
-    width: '100%',
-    height: SCREEN_WIDTH * 0.7,
-    backgroundColor: COLORS.lightGray,
-    position: 'relative',
-  },
-  imagePlaceholder: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  imagePlaceholderText: {
-    marginTop: 10,
-    color: COLORS.mediumGray,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  imageOverlayHeader: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  overlayBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  overlayHeaderRight: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  ratingChipOnImage: {
-    position: 'absolute',
-    bottom: 16,
-    left: 16,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-  },
-  ratingChipText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.darkGray,
+  goBackText: {
+    color: '#4B5563',
+    fontWeight: '600',
+    fontSize: 16,
   },
 
   // Scroll Content
@@ -607,458 +405,287 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 40,
+    flexGrow: 1,
   },
 
-  // Title Block
-  titleBlock: {
-    padding: 24,
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    marginTop: -32,
+  // Image Header
+  imageContainer: {
+    width: width,
+    height: HEADER_IMAGE_HEIGHT,
+    backgroundColor: '#1F2937',
+    position: 'relative',
   },
-  titleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+  image: {
+    width: width,
+    height: HEADER_IMAGE_HEIGHT,
   },
-  vehicleName: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: COLORS.darkGray,
-    letterSpacing: -0.5,
-    flex: 1,
+  imageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.25)',
   },
-  titleMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 10,
-  },
-  starRow: {
-    flexDirection: 'row',
-    gap: 3,
-  },
-  reviewCount: {
-    fontSize: 14,
-    color: COLORS.mediumGray,
-    fontWeight: '600',
-  },
-  pickupRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 16,
-    backgroundColor: COLORS.lightGray,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-  },
-  locationIconBox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: COLORS.white,
+  fallbackImage: {
+    backgroundColor: '#E5E7EB',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  pickupText: {
-    fontSize: 14,
-    color: COLORS.darkGray,
-    fontWeight: '500',
+  floatingHeader: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  floatingRight: {
+    flexDirection: 'row',
+  },
+  glassButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
   },
 
-  // Features
-  featuresRow: {
+  // Content Container
+  contentContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    marginTop: -30,
+    paddingHorizontal: 20,
+    paddingTop: 28,
+  },
+  
+  // Header Section
+  headerSection: {
+    marginBottom: 28,
+  },
+  typeBadge: {
+    backgroundColor: '#F3F4F6',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginBottom: 12,
+  },
+  typeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#4B5563',
+    letterSpacing: 0.5,
+  },
+  vehicleName: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#111827',
+    lineHeight: 34,
+    marginBottom: 12,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  ratingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#111827',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  ratingTextMain: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+    marginLeft: 4,
+  },
+  reviewCount: {
+    color: '#6B7280',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  metaDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D1D5DB',
+    marginHorizontal: 10,
+  },
+  locationText: {
+    color: '#4B5563',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 4,
+    flex: 1,
+  },
+
+  // General Section
+  section: {
+    marginBottom: 32,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 16,
+  },
+
+  // Highlights Grid
+  highlightsWrapper: {
+    marginBottom: 32,
+  },
+  highlightsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
-    paddingHorizontal: 24,
-    marginBottom: 24,
+    justifyContent: 'space-between',
   },
-  featureBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: COLORS.white,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 14,
+  highlightCard: {
+    width: '48%',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: COLORS.borderGray,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
+    borderColor: '#F3F4F6',
   },
-  featureBadgeText: {
-    fontSize: 13,
-    color: COLORS.darkGray,
-    fontWeight: '600',
+  highlightIconBg: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  highlightLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  highlightValue: {
+    fontSize: 14,
+    color: '#111827',
+    fontWeight: '700',
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontStyle: 'italic',
   },
 
-  // Tabs
-  tabToggleContainer: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.lightGray,
-    marginHorizontal: 24,
-    borderRadius: 16,
-    padding: 6,
-    marginBottom: 20,
+  // About Section
+  aboutText: {
+    fontSize: 15,
+    lineHeight: 24,
+    color: '#4B5563',
   },
-  tabToggleBtn: {
-    flex: 1,
-    paddingVertical: 12,
+
+  // Amenities
+  amenitiesList: {
+    gap: 12,
+  },
+  amenityItem: {
+    flexDirection: 'row',
     alignItems: 'center',
+  },
+  amenityText: {
+    fontSize: 15,
+    color: '#374151',
+    fontWeight: '500',
+    marginLeft: 12,
+  },
+  
+  // Gallery
+  galleryContainer: {
+    gap: 12,
+    paddingVertical: 8,
+  },
+  galleryImage: {
+    width: 240,
+    height: 160,
     borderRadius: 12,
   },
-  tabToggleBtnActive: {
-    backgroundColor: COLORS.white,
+
+  bottomSpacer: {
+    height: 120, // space for bottom bar
+  },
+
+  // Bottom Booking Bar
+  bottomBarWrapper: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    paddingHorizontal: 20,
+    paddingTop: 16,
     shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  bottomBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  priceContainer: {
+    flex: 1,
+  },
+  priceLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  priceText: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  perDay: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  priceSubtext: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 2,
+    textDecorationLine: 'underline',
+  },
+  bookButton: {
+    backgroundColor: '#16A34A',
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 14,
+    shadowColor: '#16A34A',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
   },
-  tabToggleText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.mediumGray,
-  },
-  tabToggleTextActive: {
-    color: COLORS.primary,
-  },
-
-  // Cards & Sections
-  section: {
-    marginTop: 28,
-    paddingHorizontal: 24,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: COLORS.darkGray,
-    marginBottom: 16,
-    letterSpacing: -0.3,
-  },
-  card: {
-    backgroundColor: COLORS.white,
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.05,
-    shadowRadius: 15,
-    elevation: 5,
-    borderWidth: 1,
-    borderColor: 'rgba(226, 232, 240, 0.5)',
-  },
-  descriptionText: {
-    fontSize: 16,
-    color: COLORS.mediumGray,
-    lineHeight: 26,
-    letterSpacing: 0.2,
-  },
-
-  // Specs
-  specRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-  },
-  specRowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.lightGray,
-  },
-  specLabel: {
-    fontSize: 15,
-    color: COLORS.mediumGray,
-    fontWeight: '500',
-  },
-  specValue: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.darkGray,
-  },
-
-  // Dates
-  dateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  dateSelectorCard: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: COLORS.borderGray,
-  },
-  dateSelectorIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: '#F0FDF4',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  dateSelectorInfo: {
-    flex: 1,
-  },
-  dateSelectorLabel: {
-    fontSize: 11,
-    color: COLORS.mediumGray,
-    textTransform: 'uppercase',
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  dateSelectorDate: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: COLORS.darkGray,
-    marginTop: 2,
-  },
-  dateSelectorTime: {
-    fontSize: 12,
-    color: COLORS.mediumGray,
-    marginTop: 1,
-  },
-  dateSeparator: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dateSeparatorLine: {
-    width: 1,
-    height: 12,
-    backgroundColor: COLORS.borderGray,
-  },
-  dateSeparatorDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.primary,
-    marginVertical: 4,
-  },
-  durationChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#F0FDFA',
-    alignSelf: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 25,
-    marginTop: 20,
-    borderWidth: 1,
-    borderColor: '#CCFBF1',
-  },
-  durationChipText: {
-    fontSize: 14,
-    color: COLORS.teal,
-    fontWeight: '600',
-  },
-
-  // Price
-  priceDivider: {
-    height: 1,
-    backgroundColor: COLORS.lightGray,
-    marginVertical: 16,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-  },
-  priceRowTotal: {
-    paddingVertical: 0,
-  },
-  priceRowLabel: {
-    fontSize: 15,
-    color: COLORS.mediumGray,
-    fontWeight: '500',
-  },
-  priceRowLabelTotal: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: COLORS.darkGray,
-  },
-  priceRowAmount: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.darkGray,
-  },
-  priceRowAmountTotal: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: COLORS.primary,
-  },
-
-  // Cancellation
-  cancellationBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F0FDF4',
-    marginHorizontal: 24,
-    marginTop: 32,
-    padding: 20,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#DCFCE7',
-  },
-  cancellationIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-  },
-  cancellationTextBox: {
-    flex: 1,
-  },
-  cancellationTitle: {
+  bookButtonText: {
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '800',
-    color: COLORS.darkGray,
-  },
-  cancellationSubtitle: {
-    fontSize: 13,
-    color: COLORS.mediumGray,
-    marginTop: 4,
-    lineHeight: 18,
-  },
-
-  // Host Card
-  hostCard: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    backgroundColor: COLORS.white,
-    borderRadius:    20,
-    padding:         18,
-    shadowColor:     '#000',
-    shadowOffset:    { width: 0, height: 4 },
-    shadowOpacity:   0.04,
-    shadowRadius:    12,
-    elevation:       3,
-    borderWidth:     1,
-    borderColor:     COLORS.borderGray,
-    gap:             16,
-  },
-  hostAvatarPlaceholder: {
-    width:           56,
-    height:          56,
-    borderRadius:    28,
-    backgroundColor: COLORS.lightGray,
-    alignItems:      'center',
-    justifyContent:  'center',
-    borderWidth:     1,
-    borderColor:     COLORS.borderGray,
-    borderStyle:     'dashed',
-  },
-  hostInfo: {
-    flex: 1,
-    gap:  6,
-  },
-  hostName: {
-    fontSize:   17,
-    fontWeight: '800',
-    color:      COLORS.darkGray,
-  },
-  hostMetaRow: {
-    flexDirection: 'row',
-    alignItems:    'center',
-    gap:           6,
-  },
-  hostMeta: {
-    fontSize:   13,
-    color:      COLORS.mediumGray,
-    fontWeight: '600',
-  },
-  hostChatBtn: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    gap:             6,
-    backgroundColor: '#F0FDF4',
-    paddingHorizontal: 16,
-    paddingVertical:   10,
-    borderRadius:    12,
-    borderWidth:     1,
-    borderColor:     '#DCFCE7',
-  },
-  hostChatBtnText: {
-    fontSize:   14,
-    fontWeight: '800',
-    color:      COLORS.primary,
-  },
-
-  // Sticky Bottom CTA
-  bottomCTA: {
-    position:          'absolute',
-    bottom:            0,
-    left:              0,
-    right:             0,
-    flexDirection:     'row',
-    alignItems:        'center',
-    justifyContent:    'center',
-    backgroundColor:   COLORS.white,
-    paddingHorizontal: 20,
-    paddingVertical:   18,
-    borderTopWidth:    1,
-    borderTopColor:    '#F1F5F9',
-   
-  },
-  bottomCTAPrice: {
-    gap: 4,
-  },
-  bottomCTAPriceLabel: {
-    fontSize:   12,
-    color:      COLORS.mediumGray,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  bottomCTAPriceValue: {
-    fontSize:      26,
-    fontWeight:    '900',
-    color:         COLORS.darkGray,
-    letterSpacing: -1,
-    lineHeight:    30,
-  },
-  bottomCTAPriceDays: {
-    fontSize:   13,
-    color:      COLORS.mediumGray,
-    fontWeight: '600',
-  },
-  bookPayBtn: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    gap:             10,
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 32,
-    paddingVertical:   16,
-    borderRadius:    18,
-    shadowColor:     COLORS.primary,
-    shadowOffset:    { width: 0, height: 8 },
-    shadowOpacity:   0.3,
-    shadowRadius:    12,
-    elevation:       8,
-  },
-  bookPayBtnText: {
-    fontSize:   16,
-    fontWeight: '900',
-    color:      COLORS.white,
     letterSpacing: 0.5,
   },
 });

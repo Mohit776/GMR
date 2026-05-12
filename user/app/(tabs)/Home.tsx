@@ -312,8 +312,7 @@ export default function HomeScreen() {
     <View style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
 
-      {/* ── Top App Bar ── */}
-      <AppBar />
+     
 
       {/* ── Location Selector ── */}
       <TouchableOpacity style={styles.locationBar} activeOpacity={0.8}>
@@ -375,7 +374,7 @@ export default function HomeScreen() {
                 <ExpoImage
                   source={item.source}
                   style={styles.heroImage}
-                  contentFit="fill"
+                  contentFit="contain"
                   transition={300}
                 />
               </View>

@@ -91,6 +91,20 @@ Deno.serve(async (req) => {
       auth.user.email?.split('@')[0] ||
       'Traveler';
 
+    // Check if user already has an active pending request
+    const { data: existingPending } = await serviceClient
+      .from('bookings')
+      .select('id')
+      .eq('user_id', auth.user.id)
+      .eq('status', 'pending')
+      .eq('pre_payment_status', 'awaiting_guide')
+      .limit(1)
+      .maybeSingle();
+
+    if (existingPending) {
+      throw new HttpError(400, 'You already have an active booking request. Please cancel it or wait for it to expire before placing a new one.');
+    }
+
     const bookingRow: Record<string, unknown> = {
       user_id: auth.user.id,
       user_name: userName,

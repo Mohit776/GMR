@@ -5,14 +5,19 @@ import {
   ScrollView, 
   TouchableOpacity, 
   StatusBar,
-  ActivityIndicator
+  ActivityIndicator,
+  Dimensions
 } from 'react-native';
 import { Text } from '../../components/Text';
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../utils/supabase';
+import { VideoView, useVideoPlayer } from 'expo-video';
+
+const { width } = Dimensions.get('window');
+const HEADER_IMAGE_HEIGHT = 380;
 
 interface GuideListing {
   id: string;
@@ -35,21 +40,32 @@ interface Guide {
   languages: string;
   specialties: string[];
   price: number;
+  perHourRate: number;
+  isAvailable: boolean;
   image: string;
   images: string[];
   listings: GuideListing[];
   isApproved: boolean;
   isOnline: boolean;
-  city: string; // city where guide operates
+  city: string;
+  demoVideo: string;
 }
 
 export default function GuideDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
+  const insets = useSafeAreaInsets();
+  
   const [isSaved, setIsSaved] = useState(false);
   const [guide, setGuide] = useState<Guide | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [videoPlaying, setVideoPlaying] = useState(false);
+
+  // expo-video player — initialised with empty URI, updated when guide loads
+  const videoPlayer = useVideoPlayer('', player => {
+    player.loop = false;
+  });
 
   useEffect(() => {
     if (!id) return;
@@ -64,8 +80,7 @@ export default function GuideDetailScreen() {
 
         if (error) throw error;
 
-        // Fetch guide listings
-        const { data: listingsData, error: listingsError } = await supabase
+        const { data: listingsData } = await supabase
           .from('listings')
           .select('*')
           .eq('partner_id', id as string)
@@ -116,21 +131,18 @@ export default function GuideDetailScreen() {
              try { profileData = JSON.parse(profileData); } catch (e) { profileData = {}; }
           }
 
-          // Determine price: prefer profile price_per_day, fall back to first listing price
+          const perHourRate = parseFloat(profileData.per_hour_rate) || 0;
           const profilePrice = parseInt(profileData.price_per_day) || 0;
           const firstListingPrice = parsedListings.length > 0 ? (Number(parsedListings[0].price) || 0) : 0;
-          const effectivePrice = profilePrice > 0 ? profilePrice : firstListingPrice;
-
-          // Determine about: prefer profile bio, fall back to first listing description
-          const effectiveAbout = profileData.bio ||
-            (parsedListings.length > 0 ? parsedListings[0].description : '') || '';
-
-          // Determine location: prefer profile, fall back to first listing location
-          const effectiveLocation = profileData.location ||
-            (parsedListings.length > 0 ? parsedListings[0].location : '') || '';
-
-          // City: from users.city column (set during guide onboarding)
+          const effectivePrice = perHourRate > 0 ? perHourRate : (profilePrice > 0 ? profilePrice : firstListingPrice);
+          const effectiveAbout = profileData.bio || (parsedListings.length > 0 ? parsedListings[0].description : '') || '';
+          const effectiveLocation = profileData.location || (parsedListings.length > 0 ? parsedListings[0].location : '') || '';
           const guideCity = (data.city || profileData.city || effectiveLocation || '').trim();
+
+          const videoUrl = data.kyc_video_url || profileData.demo_video || profileData.kycVideoUrl || '';
+          if (videoUrl) {
+            videoPlayer.replace({ uri: videoUrl });
+          }
 
           setGuide({
             id: data.id,
@@ -138,25 +150,20 @@ export default function GuideDetailScreen() {
             rating: data.rating || 0,
             reviews: data.reviews || 0,
             location: effectiveLocation,
-            experience: profileData.experience
-              ? `${profileData.experience}+ Years`
-              : '',
+            experience: profileData.experience ? `${profileData.experience}+ Years` : '',
             about: effectiveAbout,
-            languages: Array.isArray(profileData.languages)
-              ? profileData.languages.join(', ')
-              : (profileData.languages || ''),
-            specialties: Array.isArray(profileData.specialisations)
-              ? profileData.specialisations
-              : profileData.specialisations
-                ? String(profileData.specialisations).split(',').map((s: string) => s.trim())
-                : [],
+            languages: Array.isArray(profileData.languages) ? profileData.languages.join(', ') : (profileData.languages || ''),
+            specialties: Array.isArray(profileData.specialisations) ? profileData.specialisations : (profileData.specialisations ? String(profileData.specialisations).split(',').map((s: string) => s.trim()) : []),
             price: effectivePrice,
+            perHourRate: perHourRate,
+            isAvailable: profileData.is_available !== false,
             image: profileData.profile_image || data.profile_image || data.photo_url || '',
             images: listingImages,
             listings: parsedListings,
             isApproved: data.is_approved === true,
             isOnline: data.is_online === true,
             city: guideCity,
+            demoVideo: videoUrl,
           });
         }
       } catch (error: any) {
@@ -172,133 +179,181 @@ export default function GuideDetailScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
-         <ActivityIndicator size="large" color="#16A34A" />
+      <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <ActivityIndicator size="large" color="#16A34A" />
       </View>
     );
   }
 
   if (!guide) {
     return (
-      <View style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
-         <Text>Guide not found.</Text>
-         {errorMsg ? <Text style={{ marginTop: 10, color: 'red' }}>{errorMsg}</Text> : null}
-         <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 20 }}>
-            <Text style={{ color: '#16A34A' }}>Go Back</Text>
-         </TouchableOpacity>
+      <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <Ionicons name="search-outline" size={64} color="#D1D5DB" />
+        <Text style={styles.notFoundText}>Guide not found</Text>
+        <Text style={styles.notFoundSub}>
+          {errorMsg ? errorMsg : 'This guide might have been removed or is currently unavailable.'}
+        </Text>
+        <TouchableOpacity onPress={() => router.back()} style={styles.goBackButton}>
+          <Text style={styles.goBackText}>Explore other guides</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-      {/* ── Header ── */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.headerBtn} onPress={() => router.back()} activeOpacity={0.7}>
-          <Ionicons name="arrow-back" size={24} color="#1F2937" />
-        </TouchableOpacity>
-        
-        <Text style={styles.headerTitle}>Guide Details</Text>
-        
-        <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.headerBtn} activeOpacity={0.7}>
-            <Ionicons name="share-outline" size={24} color="#1F2937" />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.headerBtn, { marginLeft: 8 }]} 
-            onPress={() => setIsSaved(!isSaved)}
-            activeOpacity={0.7}
-          >
-            <Ionicons 
-              name={isSaved ? "heart" : "heart-outline"} 
-              size={24} 
-              color={isSaved ? "#EF4444" : "#1F2937"} 
-            />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* ── Image Section ── */}
+      <ScrollView 
+        style={styles.scroll} 
+        contentContainerStyle={styles.scrollContent} 
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
         <View style={styles.imageContainer}>
           {guide.image ? (
-            <ExpoImage
-              source={{ uri: guide.image }}
-              style={styles.image}
-              contentFit="cover"
-            />
+            <View style={{ width, height: HEADER_IMAGE_HEIGHT }}>
+              <ExpoImage
+                source={{ uri: guide.image }}
+                style={styles.image}
+                contentFit="cover"
+              />
+              <View style={styles.imageOverlay} />
+            </View>
           ) : (
-            <View style={[styles.image, { backgroundColor: '#E5E7EB', justifyContent: 'center', alignItems: 'center' }]}>
+            <View style={[styles.image, styles.fallbackImage]}>
               <Ionicons name="person" size={80} color="#9CA3AF" />
             </View>
           )}
-          {/* Verified Badge — only when approved */}
-          {guide.isApproved && (
-            <View style={styles.verifiedBadge}>
-              <Text style={styles.verifiedText}>VERIFIED GUIDE</Text>
+
+          <View style={[styles.floatingHeader, { top: Math.max(insets.top, 20) }]}>
+            <TouchableOpacity 
+              style={styles.glassButton} 
+              onPress={() => router.back()} 
+              activeOpacity={0.7}
+            >
+              <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            
+            <View style={styles.floatingRight}>
+              <TouchableOpacity style={styles.glassButton} activeOpacity={0.7}>
+                <Ionicons name="share-outline" size={22} color="#FFFFFF" />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.glassButton, { marginLeft: 12 }]} 
+                onPress={() => setIsSaved(!isSaved)}
+                activeOpacity={0.7}
+              >
+                <Ionicons 
+                  name={isSaved ? "heart" : "heart-outline"} 
+                  size={22} 
+                  color={isSaved ? "#EF4444" : "#FFFFFF"} 
+                />
+              </TouchableOpacity>
             </View>
-          )}
+          </View>
         </View>
 
-        {/* ── Guide Info ── */}
-        <View style={styles.infoSection}>
-          <View style={styles.nameRow}>
-            <Text style={styles.guideName}>{guide.name}</Text>
-            {guide.isOnline && (
-              <View style={styles.onlineBadge}>
-                <View style={styles.onlineDot} />
-                <Text style={styles.onlineText}>Online</Text>
+        <View style={styles.contentContainer}>
+          <View style={styles.headerSection}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+              <View style={styles.typeBadge}>
+                <Text style={styles.typeText}>LOCAL GUIDE</Text>
               </View>
-            )}
-          </View>
-          
-          <View style={styles.ratingRow}>
-            <Ionicons name="star" size={16} color="#FBBF24" />
-            <Text style={styles.ratingText}>
-              <Text style={styles.ratingNumber}>
-                {guide.rating > 0 ? guide.rating.toFixed(1) : 'No rating yet'}
-              </Text>
-              {guide.rating > 0 ? ` (${guide.reviews} Reviews)` : ''}
-            </Text>
-          </View>
-
-          {guide.location ? (
-            <View style={styles.iconRow}>
-              <Ionicons name="location-outline" size={18} color="#6B7280" style={styles.rowIcon} />
-              <Text style={styles.rowText}>{guide.location}</Text>
+              {guide.isApproved && (
+                <View style={[styles.typeBadge, { backgroundColor: '#EFF6FF' }]}>
+                  <Text style={[styles.typeText, { color: '#1D4ED8' }]}>VERIFIED</Text>
+                </View>
+              )}
+              <View style={[styles.typeBadge, { backgroundColor: guide.isAvailable ? '#DCFCE7' : '#FEE2E2' }]}>
+                <Text style={[styles.typeText, { color: guide.isAvailable ? '#15803D' : '#DC2626' }]}>
+                  {guide.isAvailable ? '● AVAILABLE' : '● UNAVAILABLE'}
+                </Text>
+              </View>
             </View>
-          ) : null}
-
-          {guide.experience ? (
-            <View style={styles.iconRow}>
-              <Ionicons name="time-outline" size={18} color="#6B7280" style={styles.rowIcon} />
-              <Text style={styles.rowText}>{guide.experience}</Text>
+            
+            <View style={styles.nameRow}>
+              <Text style={styles.guideName}>{guide.name}</Text>
+              {guide.isOnline && (
+                <View style={styles.onlineBadge}>
+                  <View style={styles.onlineDot} />
+                  <Text style={styles.onlineText}>Online</Text>
+                </View>
+              )}
             </View>
-          ) : null}
+            
+            <View style={styles.metaRow}>
+              <View style={styles.ratingBadge}>
+                <Ionicons name="star" size={14} color="#FFFFFF" />
+                <Text style={styles.ratingTextMain}>
+                  {guide.rating > 0 ? guide.rating.toFixed(1) : 'New'}
+                </Text>
+              </View>
+              {guide.rating > 0 && (
+                <Text style={styles.reviewCount}>({guide.reviews} reviews)</Text>
+              )}
+              
+              {guide.location ? (
+                <>
+                  <View style={styles.metaDot} />
+                  <Ionicons name="location" size={14} color="#6B7280" />
+                  <Text style={styles.locationText} numberOfLines={1}>
+                    {guide.location}
+                  </Text>
+                </>
+              ) : null}
+            </View>
+          </View>
 
           <View style={styles.divider} />
 
-          {/* ── About Section ── */}
-          {guide.about ? (
-            <>
-              <Text style={styles.sectionTitle}>About</Text>
-              <Text style={styles.aboutText}>{guide.about}</Text>
-            </>
-          ) : null}
-          
-          {guide.languages ? (
-            <Text style={styles.languagesText}>
-              <Text style={styles.languagesLabel}>Languages: </Text>
-              {guide.languages}
-            </Text>
-          ) : null}
+          <View style={styles.highlightsWrapper}>
+            <Text style={styles.sectionTitle}>Guide Overview</Text>
+            <View style={styles.highlightsGrid}>
+              {!!guide.experience && (
+                <View style={styles.highlightCard}>
+                  <View style={styles.highlightIconBg}>
+                    <Ionicons name="time" size={22} color="#16A34A" />
+                  </View>
+                  <Text style={styles.highlightLabel}>Experience</Text>
+                  <Text style={styles.highlightValue}>{guide.experience}</Text>
+                </View>
+              )}
+              {!!guide.languages && (
+                <View style={styles.highlightCard}>
+                  <View style={styles.highlightIconBg}>
+                    <Ionicons name="language" size={22} color="#3B82F6" />
+                  </View>
+                  <Text style={styles.highlightLabel}>Languages</Text>
+                  <Text style={styles.highlightValue} numberOfLines={2}>{guide.languages}</Text>
+                </View>
+              )}
+              {guide.perHourRate > 0 && (
+                <View style={styles.highlightCard}>
+                  <View style={[styles.highlightIconBg, { backgroundColor: '#FEF3C7' }]}>
+                    <Ionicons name="cash" size={22} color="#D97706" />
+                  </View>
+                  <Text style={styles.highlightLabel}>Hourly Rate</Text>
+                  <Text style={styles.highlightValue}>₹{guide.perHourRate.toLocaleString('en-IN')}/hr</Text>
+                </View>
+              )}
+              <View style={styles.highlightCard}>
+                <View style={[styles.highlightIconBg, { backgroundColor: guide.isAvailable ? '#DCFCE7' : '#FEE2E2' }]}>
+                  <Ionicons name={guide.isAvailable ? 'checkmark-circle' : 'close-circle'} size={22} color={guide.isAvailable ? '#16A34A' : '#EF4444'} />
+                </View>
+                <Text style={styles.highlightLabel}>Status</Text>
+                <Text style={[styles.highlightValue, { color: guide.isAvailable ? '#15803D' : '#DC2626' }]}>
+                  {guide.isAvailable ? 'Available' : 'Unavailable'}
+                </Text>
+              </View>
+            </View>
+          </View>
 
-          {/* ── Specializes In ── */}
-          {guide.specialties.length > 0 && (
-            <>
-              <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 12 }]}>Specializes In</Text>
+          {guide.specialties && guide.specialties.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Specializes In</Text>
               <View style={styles.chipsContainer}>
                 {guide.specialties.map((item: string, index: number) => (
                   <View key={index} style={styles.chip}>
@@ -306,30 +361,96 @@ export default function GuideDetailScreen() {
                   </View>
                 ))}
               </View>
-            </>
+            </View>
           )}
 
-          {/* ── Gallery Section ── */}
+          {guide.about ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>About</Text>
+              <Text style={styles.aboutText}>{guide.about}</Text>
+            </View>
+          ) : null}
+
           {guide.images && guide.images.length > 0 && (
-            <>
-              <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 12 }]}>Gallery</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.galleryContainer}>
-                {guide.images.map((imgUrl, idx) => (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Gallery</Text>
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false} 
+                contentContainerStyle={styles.galleryContainer}
+              >
+                {guide.images.map((img: string, index: number) => (
                   <ExpoImage 
-                    key={idx}
-                    source={{ uri: imgUrl }}
-                    style={styles.galleryImage}
-                    contentFit="cover"
+                    key={index} 
+                    source={{ uri: img }} 
+                    style={styles.galleryImage} 
+                    contentFit="cover" 
                   />
                 ))}
               </ScrollView>
-            </>
+            </View>
           )}
 
-          {/* ── Tours & Packages ── */}
+          {/* ── Demo Video ── */}
+          {!!guide.demoVideo && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Demo Video</Text>
+              <View style={styles.videoWrapper}>
+                {!videoPlaying ? (
+                  <TouchableOpacity
+                    style={styles.videoThumbContainer}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      videoPlayer.play();
+                      setVideoPlaying(true);
+                    }}
+                  >
+                    {guide.image ? (
+                      <ExpoImage
+                        source={{ uri: guide.image }}
+                        style={styles.videoThumb}
+                        contentFit="cover"
+                      />
+                    ) : (
+                      <View style={[styles.videoThumb, { backgroundColor: '#1F2937' }]} />
+                    )}
+                    <View style={styles.videoOverlay} />
+                    <View style={styles.playButtonCircle}>
+                      <Ionicons name="play" size={28} color="#FFFFFF" />
+                    </View>
+                    <View style={styles.videoDemoTag}>
+                      <Ionicons name="videocam" size={12} color="#FFFFFF" />
+                      <Text style={styles.videoDemoTagText}>Demo Video</Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.videoPlayerContainer}>
+                    <VideoView
+                      player={videoPlayer}
+                      style={styles.videoPlayer}
+                      contentFit="contain"
+                      nativeControls
+                      allowsFullscreen
+                      allowsPictureInPicture={false}
+                    />
+                    <TouchableOpacity
+                      style={styles.videoCloseBtn}
+                      onPress={() => {
+                        videoPlayer.pause();
+                        setVideoPlaying(false);
+                      }}
+                    >
+                      <Ionicons name="close-circle" size={28} color="#FFFFFF" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+
           {guide.listings && guide.listings.length > 0 && (
-            <>
-              <Text style={[styles.sectionTitle, { marginTop: 32, marginBottom: 16 }]}>Tours & Packages</Text>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Tours & Packages</Text>
               {guide.listings.map((listing, idx) => (
                 <View key={idx} style={styles.listingCard}>
                   {listing.images && listing.images.length > 0 && (
@@ -347,12 +468,6 @@ export default function GuideDetailScreen() {
                         <Text style={styles.listingDetailText}>{listing.details.duration}</Text>
                       </View>
                     )}
-                    {listing.details?.meetingPoint && (
-                      <View style={styles.listingDetailRow}>
-                        <Ionicons name="location-outline" size={14} color="#6B7280" />
-                        <Text style={styles.listingDetailText}>Meets at {listing.details.meetingPoint}</Text>
-                      </View>
-                    )}
                     <Text style={styles.listingDesc} numberOfLines={2}>{listing.description}</Text>
                     <View style={styles.listingFooter}>
                       <Text style={styles.listingPrice}>₹{Number(listing.price).toLocaleString('en-IN')}</Text>
@@ -360,20 +475,21 @@ export default function GuideDetailScreen() {
                   </View>
                 </View>
               ))}
-            </>
+            </View>
           )}
-
+          
+          <View style={styles.bottomSpacer} />
         </View>
       </ScrollView>
 
-      {/* ── Bottom Booking Bar ── */}
-      <View style={styles.bottomBarContainer}>
+      <View style={[styles.bottomBarWrapper, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         <View style={styles.bottomBar}>
           <View style={styles.priceContainer}>
             {guide.price > 0 ? (
               <>
+                <Text style={styles.priceLabel}>Rate</Text>
                 <Text style={styles.priceText}>
-                  ₹{guide.price.toLocaleString('en-IN')} <Text style={styles.perDay}>/ Day</Text>
+                  ₹{guide.price.toLocaleString('en-IN')} <Text style={styles.perUnit}>/ hour</Text>
                 </Text>
                 <Text style={styles.priceSubtext}>Price may vary by group size</Text>
               </>
@@ -383,111 +499,155 @@ export default function GuideDetailScreen() {
           </View>
           
           <TouchableOpacity
-            style={[styles.bookButton, guide.price === 0 && { backgroundColor: '#9CA3AF' }]}
-            activeOpacity={0.85}
+            style={[styles.bookButton, (guide.price === 0 || !guide.isAvailable) && { backgroundColor: '#9CA3AF', shadowOpacity: 0 }]}
+            activeOpacity={0.8}
             onPress={() => {
-              router.push({
-                pathname: '/more/checkout',
-                params: {
-                  bookingType: 'guide',
-                  itemId: guide.id,
-                  itemName: guide.name,
-                  pricePerUnit: String(guide.price),
-                  partnerId: guide.id,
-                  unitLabel: 'day',
-                  guideCity: guide.city, // ← city for guide-first dispatch
-                },
-              });
+              if (!guide.isAvailable) {
+                return;
+              }
+              if (guide.price > 0) {
+                router.push({
+                  pathname: '/more/checkout',
+                  params: {
+                    bookingType: 'guide',
+                    itemId: guide.id,
+                    itemName: guide.name,
+                    pricePerUnit: String(guide.price),
+                    partnerId: guide.id,
+                    unitLabel: 'hour',
+                    guideCity: guide.city,
+                  },
+                });
+              }
             }}
           >
-            <Text style={styles.bookButtonText}>Book with {guide.name.split(' ')[0]}</Text>
+            <Text style={styles.bookButtonText}>{guide.isAvailable ? 'Book Now' : 'Unavailable'}</Text>
           </TouchableOpacity>
         </View>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-  
-  // Header
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+  loadingContainer: {
+    flex: 1,
     backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
   },
-  headerBtn: {
-    padding: 4,
-  },
-  headerTitle: {
-    fontSize: 18,
+  notFoundText: {
+    fontSize: 20,
     fontWeight: '700',
     color: '#1F2937',
+    marginTop: 16,
   },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  notFoundSub: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 24,
   },
-
-  // Scroll Content
+  goBackButton: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  goBackText: {
+    color: '#4B5563',
+    fontWeight: '600',
+    fontSize: 16,
+  },
   scroll: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
   },
   scrollContent: {
-    paddingBottom: 200, // padding for the bottom bar
+    flexGrow: 1,
   },
-
-  // Image Section
   imageContainer: {
-    width: '100%',
-    height: 300,
-    backgroundColor: '#E5E7EB',
+    width: width,
+    height: HEADER_IMAGE_HEIGHT,
+    backgroundColor: '#1F2937',
     position: 'relative',
   },
   image: {
-    width: '100%',
-    height: '100%',
+    width: width,
+    height: HEADER_IMAGE_HEIGHT,
   },
-  verifiedBadge: {
+  imageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  fallbackImage: {
+    backgroundColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  floatingHeader: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    backgroundColor: '#1E88E5', // the blue from the design
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderTopRightRadius: 8,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 10,
   },
-  verifiedText: {
-    color: '#FFFFFF',
+  floatingRight: {
+    flexDirection: 'row',
+  },
+  glassButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  contentContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    marginTop: -30,
+    paddingHorizontal: 20,
+    paddingTop: 28,
+  },
+  headerSection: {
+    marginBottom: 20,
+  },
+  typeBadge: {
+    backgroundColor: '#F3F4F6',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  typeText: {
     fontSize: 12,
     fontWeight: '700',
+    color: '#4B5563',
     letterSpacing: 0.5,
-  },
-
-  // Info Section
-  infoSection: {
-    padding: 20,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
     flexWrap: 'wrap',
   },
   guideName: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '800',
     color: '#111827',
+    lineHeight: 34,
   },
   onlineBadge: {
     flexDirection: 'row',
@@ -497,158 +657,146 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
     marginLeft: 12,
+    marginTop: 2,
   },
   onlineDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: '#10B981',
     marginRight: 4,
   },
   onlineText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#059669',
-    fontWeight: '600',
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  ratingText: {
-    marginLeft: 6,
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  ratingNumber: {
-    color: '#374151',
     fontWeight: '700',
   },
-  iconRow: {
+  metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    flexWrap: 'wrap',
   },
-  rowIcon: {
-    marginRight: 8,
+  ratingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#111827',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
-  rowText: {
+  ratingTextMain: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+    marginLeft: 4,
+  },
+  reviewCount: {
+    color: '#6B7280',
     fontSize: 14,
-    color: '#4B5563',
     fontWeight: '500',
+    marginLeft: 8,
+  },
+  metaDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D1D5DB',
+    marginHorizontal: 10,
+  },
+  locationText: {
+    color: '#4B5563',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 4,
+    flex: 1,
   },
   divider: {
     height: 1,
     backgroundColor: '#F3F4F6',
-    marginVertical: 20,
+    marginVertical: 24,
   },
-
-  // About Section
+  section: {
+    marginBottom: 32,
+  },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 12,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 16,
   },
-  aboutText: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: '#4B5563',
-    marginBottom: 12,
+  highlightsWrapper: {
+    marginBottom: 32,
   },
-  languagesText: {
-    fontSize: 14,
-    color: '#6B7280',
-  },
-  languagesLabel: {
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-
-  // Specialties Chips
-  chipsContainer: {
+  highlightsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8, // Requires React Native 0.71+, typically fine in modern Expo
+    gap: 12,
+    justifyContent: 'space-between',
   },
-  chip: {
-    backgroundColor: '#ECFDF5', // Light green background
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+  highlightCard: {
+    width: '48%',
+    backgroundColor: '#F9FAFB',
     borderRadius: 16,
-  },
-  chipText: {
-    color: '#065F46', // Dark green text
-    fontSize: 13,
-    fontWeight: '600',
-  },
-
-  // Bottom Booking Bar
-  bottomBarContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingBottom: 24, 
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  bottomBar: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    gap: 16, // using gap for spacing between price and button
-    // The design has price at top, button at bottom inside a lighter container maybe, or just stacked
-    padding: 12,
+    padding: 16,
     borderWidth: 1,
     borderColor: '#F3F4F6',
   },
-  priceContainer: {
-    marginBottom: 4,
+  highlightIconBg: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  priceText: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  perDay: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#4B5563',
-  },
-  priceSubtext: {
+  highlightLabel: {
     fontSize: 12,
     color: '#6B7280',
-    marginTop: 2,
-    fontWeight: '500', // Making subtext a bit bolder for readability
+    fontWeight: '500',
+    marginBottom: 4,
   },
-  bookButton: {
-    backgroundColor: '#16A34A', // Forest Green
-    borderRadius: 12,
-    height: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bookButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+  highlightValue: {
+    fontSize: 14,
+    color: '#111827',
     fontWeight: '700',
   },
-  // Gallery Section
+  chipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  chipText: {
+    color: '#065F46',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  aboutText: {
+    fontSize: 15,
+    lineHeight: 24,
+    color: '#4B5563',
+  },
   galleryContainer: {
     gap: 12,
-    paddingRight: 20, // Add padding to the end of scroll
+    paddingVertical: 8,
   },
   galleryImage: {
-    width: 140,
-    height: 140,
+    width: 240,
+    height: 160,
     borderRadius: 12,
     backgroundColor: '#E5E7EB',
   },
-  // Listings Section
   listingCard: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
@@ -702,5 +850,147 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     color: '#16A34A',
+  },
+  bottomSpacer: {
+    height: 120,
+  },
+
+  // Video section
+  videoWrapper: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  videoThumbContainer: {
+    height: 210,
+    width: '100%',
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoThumb: {
+    ...StyleSheet.absoluteFillObject,
+    width: undefined,
+    height: undefined,
+  },
+  videoOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  playButtonCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(22,163,74,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.4)',
+    shadowColor: '#16A34A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 8,
+    paddingLeft: 4, // optical center for play icon
+  },
+  videoDemoTag: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    gap: 5,
+  },
+  videoDemoTagText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  videoPlayerContainer: {
+    height: 240,
+    width: '100%',
+    backgroundColor: '#000',
+    position: 'relative',
+  },
+  videoPlayer: {
+    width: '100%',
+    height: 240,
+  },
+  videoCloseBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 10,
+  },
+  bottomBarWrapper: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  bottomBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  priceContainer: {
+    flex: 1,
+  },
+  priceLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  priceText: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  perUnit: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  priceSubtext: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 2,
+  },
+  bookButton: {
+    backgroundColor: '#16A34A',
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 14,
+    shadowColor: '#16A34A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  bookButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
 });

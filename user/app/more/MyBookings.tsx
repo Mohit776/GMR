@@ -9,40 +9,41 @@ import { ScrollView,
   StyleSheet,
   TouchableOpacity,
   View,
-  ActivityIndicator } from 'react-native';
+  ActivityIndicator,
+  Alert
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AppBar from '../../components/AppBar';
 import { supabase } from '../../utils/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
 // ─── Color Palette ─────────────────────────────────────────────────────────────
 const COLORS = {
-  primary: '#16A34A',
+  primary: '#16A34A', // Vibrant green
   teal: '#14B8A6',
   skyBlue: '#0EA5E9',
   orange: '#F97316',
   white: '#FFFFFF',
-  lightGray: '#F1F5F9',
-  darkGray: '#1F2937',
-  mediumGray: '#6B7280',
-  borderGray: '#d3dbe2',
+  lightGray: '#F8FAFC', // Softer background
+  darkGray: '#0F172A',  // Deeper text
+  mediumGray: '#64748B', // Slate gray
+  borderGray: '#E2E8F0', // Subtle border
   danger: '#EF4444',
 };
 
 const SHADOWS = {
   small: {
-    shadowColor: '#000',
+    shadowColor: '#64748B',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
     elevation: 2,
   },
   medium: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowColor: '#64748B',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 5,
   },
 };
 
@@ -146,7 +147,7 @@ const BottomTabBar = ({
 );
 
 // ─── Booking Card ──────────────────────────────────────────────────────────────
-const BookingCard = ({ booking }: { booking: Booking }) => {
+const BookingCard = ({ booking, onCancel }: { booking: Booking; onCancel?: (id: string) => void }) => {
   const status = STATUS_CONFIG[booking.status];
   const isUpcoming = booking.tab === 'Upcoming';
   const isCancelled = booking.tab === 'Cancelled';
@@ -237,12 +238,32 @@ const BookingCard = ({ booking }: { booking: Booking }) => {
       <View style={styles.actionRow}>
         {/* Guide-first: Awaiting guide */}
         {isAwaitingGuide && (
-          <View style={[styles.guideStatusBox, { backgroundColor: '#FFF7ED', borderColor: '#FED7AA', flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 11, borderRadius: 10, gap: 8 }]}>
-            <ActivityIndicator size="small" color={COLORS.orange} />
-            <Text style={[styles.guideStatusText, { color: COLORS.orange, fontSize: 13, fontWeight: '700' }]}>
-              Looking for a guide...
-            </Text>
-          </View>
+          <>
+            <View style={[styles.guideStatusBox, { backgroundColor: '#FFF7ED', borderColor: '#FED7AA', flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 11, borderRadius: 10, gap: 8 }]}>
+              <ActivityIndicator size="small" color={COLORS.orange} />
+              <Text style={[styles.guideStatusText, { color: COLORS.orange, fontSize: 13, fontWeight: '700' }]}>
+                Finding guide…
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.dangerBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                if (onCancel) {
+                  Alert.alert(
+                    'Cancel Request',
+                    'Are you sure you want to cancel this booking request?',
+                    [
+                      { text: 'No', style: 'cancel' },
+                      { text: 'Yes, Cancel', style: 'destructive', onPress: () => onCancel(booking.id) },
+                    ]
+                  );
+                }
+              }}
+            >
+              <Text style={styles.dangerBtnText}>Cancel</Text>
+            </TouchableOpacity>
+          </>
         )}
         {/* Guide-first: Pay Now */}
         {isAwaitingPayment && (
@@ -289,7 +310,22 @@ const BookingCard = ({ booking }: { booking: Booking }) => {
             >
               <Text style={styles.secondaryBtnText}>View Details</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.dangerBtn} activeOpacity={0.85}>
+            <TouchableOpacity 
+              style={styles.dangerBtn} 
+              activeOpacity={0.85}
+              onPress={() => {
+                if (onCancel) {
+                  Alert.alert(
+                    'Cancel Booking',
+                    'Are you sure you want to cancel this booking?',
+                    [
+                      { text: 'No', style: 'cancel' },
+                      { text: 'Yes, Cancel', style: 'destructive', onPress: () => onCancel(booking.id) }
+                    ]
+                  );
+                }
+              }}
+            >
               <Text style={styles.dangerBtnText}>Cancel</Text>
             </TouchableOpacity>
           </>
@@ -402,9 +438,24 @@ export default function MyBookingsScreen() {
         return;
       }
 
-      const fetchedBookings: Booking[] = (data || []).map((row) => {
+      const now = new Date().getTime();
+      const THIRTY_MINS = 30 * 60 * 1000;
+
+      const fetchedBookings: Booking[] = await Promise.all((data || []).map(async (row) => {
         let status: StatusType = 'Pending';
-        const rawStatus = (row.status || '').toLowerCase();
+        let rawStatus = (row.status || '').toLowerCase();
+        let prePayStatus = row.pre_payment_status || null;
+
+        // Auto-expire unaccepted requests after 30 mins
+        if (rawStatus === 'pending' && prePayStatus === 'awaiting_guide' && row.created_at) {
+          const createdAtTime = new Date(row.created_at).getTime();
+          if (now - createdAtTime > THIRTY_MINS) {
+            // Expire it in the database
+            await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', row.id);
+            rawStatus = 'cancelled';
+          }
+        }
+
         if (rawStatus === 'confirmed') status = 'Confirmed';
         else if (rawStatus === 'completed') status = 'Completed';
         else if (rawStatus === 'cancelled' || rawStatus === 'rejected') status = 'Cancelled';
@@ -438,7 +489,7 @@ export default function MyBookingsScreen() {
           booking_type: row.booking_type || null,
           _createdAt: row.created_at ? new Date(row.created_at).getTime() : 0,
         };
-      });
+      }));
 
       setBookings(fetchedBookings);
       setLoading(false);
@@ -451,6 +502,22 @@ export default function MyBookingsScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     setRefreshKey(k => k + 1);
+  };
+
+  const handleCancelBooking = async (bookingId: string) => {
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status: 'cancelled' })
+        .eq('id', bookingId);
+
+      if (error) throw error;
+      
+      Alert.alert('Success', 'Booking cancelled successfully');
+      onRefresh();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to cancel booking');
+    }
   };
 
   const filtered = bookings.filter((b) => b.tab === activeTab);
@@ -470,7 +537,13 @@ export default function MyBookingsScreen() {
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
 
       {/* ── Header ── */}
-      <AppBar />
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
+          <Ionicons name="chevron-back" size={24} color={COLORS.darkGray} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>My Bookings</Text>
+        <View style={{ width: 36 }} />
+      </View>
 
       {/* ── Filter Tabs ── */}
       <View style={styles.filterTabsWrapper}>
@@ -525,13 +598,13 @@ export default function MyBookingsScreen() {
               <View key={section.sectionTitle}>
                 <Text style={styles.sectionDate}>{section.sectionTitle}</Text>
                 {section.data.map((booking) => (
-                  <BookingCard key={booking.id} booking={booking} />
+                  <BookingCard key={booking.id} booking={booking} onCancel={handleCancelBooking} />
                 ))}
               </View>
             ))
           ) : (
             filtered.map((booking) => (
-              <BookingCard key={booking.id} booking={booking} />
+              <BookingCard key={booking.id} booking={booking} onCancel={handleCancelBooking} />
             ))
           )}
 
@@ -603,7 +676,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    gap: 8,
+    gap: 10,
     backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.borderGray,
@@ -613,16 +686,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 9,
-    borderRadius: 10,
+    paddingVertical: 10,
+    borderRadius: 24,
     backgroundColor: COLORS.lightGray,
-    gap: 5,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
+    gap: 6,
   },
   filterTabActive: {
-    backgroundColor: '#DCFCE7',
-    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary,
   },
   filterTabText: {
     fontSize: 13,
@@ -630,16 +700,16 @@ const styles = StyleSheet.create({
     color: COLORS.mediumGray,
   },
   filterTabTextActive: {
-    color: COLORS.primary,
+    color: COLORS.white,
   },
   filterTabCount: {
     backgroundColor: COLORS.borderGray,
-    borderRadius: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
+    borderRadius: 12,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
   },
   filterTabCountActive: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
   },
   filterTabCountText: {
     fontSize: 10,
@@ -657,8 +727,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 10,
+    paddingTop: 20,
+    paddingBottom: 24,
   },
 
   // Section Date
@@ -674,117 +744,119 @@ const styles = StyleSheet.create({
   // Booking Card
   bookingCard: {
     backgroundColor: COLORS.white,
-    borderRadius: 18,
-    marginBottom: 14,
+    borderRadius: 20,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
+    borderColor: COLORS.borderGray,
     overflow: 'hidden',
     ...SHADOWS.small,
   },
   prePayBanner: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.borderGray,
   },
   prePayBannerText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
+    textAlign: 'center',
   },
   cardHeader: {
     flexDirection: 'row',
-    padding: 14,
-    alignItems: 'flex-start',
-    gap: 12,
+    padding: 16,
+    alignItems: 'center',
+    gap: 14,
   },
   vehicleImagePlaceholder: {
-    width: 72,
-    height: 72,
-    borderRadius: 12,
+    width: 68,
+    height: 68,
+    borderRadius: 16,
     backgroundColor: COLORS.lightGray,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
     gap: 4,
-    borderWidth: 1,
-    borderColor: COLORS.borderGray,
-    borderStyle: 'dashed',
+    ...SHADOWS.small,
   },
   imagePlaceholderLabel: {
     fontSize: 9,
     color: COLORS.mediumGray,
-    fontWeight: '500',
+    fontWeight: '600',
+    textTransform: 'uppercase',
   },
   cardHeaderInfo: {
     flex: 1,
-    gap: 4,
+    gap: 5,
   },
   vehicleName: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
     color: COLORS.darkGray,
-    letterSpacing: -0.2,
-    marginBottom: 3,
+    letterSpacing: -0.3,
+    marginBottom: 2,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
   },
   metaText: {
-    fontSize: 12,
+    fontSize: 13,
     color: COLORS.mediumGray,
     fontWeight: '500',
   },
   statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 20,
     alignSelf: 'flex-start',
     flexShrink: 0,
   },
   statusText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
   },
 
   // Divider
   divider: {
     height: 1,
     backgroundColor: COLORS.borderGray,
-    marginHorizontal: 14,
+    marginHorizontal: 16,
   },
 
   // Trip Details
   tripDetailsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   tripDetailItem: {
     flex: 1,
-    gap: 4,
+    gap: 6,
   },
   tripDetailDivider: {
     width: 1,
-    height: 32,
+    height: 36,
     backgroundColor: COLORS.borderGray,
-    marginHorizontal: 14,
+    marginHorizontal: 16,
   },
   tripDetailLabel: {
     fontSize: 10,
     color: COLORS.mediumGray,
-    fontWeight: '700',
-    letterSpacing: 0.8,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   tripDetailValueRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
   },
   tripDetailValue: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: COLORS.darkGray,
     flex: 1,
@@ -793,11 +865,12 @@ const styles = StyleSheet.create({
   // Action Buttons
   actionRow: {
     flexDirection: 'row',
-    gap: 10,
-    padding: 14,
+    gap: 12,
+    padding: 16,
+    backgroundColor: COLORS.lightGray,
   },
   guideStatusBox: {
-    borderWidth: 1.5,
+    borderWidth: 1,
   },
   guideStatusText: {
     color: COLORS.orange,
@@ -808,17 +881,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.primary,
-    paddingVertical: 11,
-    borderRadius: 10,
-    gap: 6,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 3,
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 8,
   },
   primaryBtnText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: COLORS.white,
   },
@@ -826,29 +894,29 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 11,
-    borderRadius: 10,
-    borderWidth: 1.5,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
     borderColor: COLORS.borderGray,
     backgroundColor: COLORS.white,
   },
   secondaryBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
     color: COLORS.darkGray,
   },
   dangerBtn: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 11,
-    borderRadius: 10,
-    borderWidth: 1.5,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
     borderColor: '#FECACA',
     backgroundColor: '#FEF2F2',
   },
   dangerBtnText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: COLORS.danger,
   },
@@ -858,17 +926,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.teal,
-    paddingVertical: 11,
-    borderRadius: 10,
-    gap: 6,
-    shadowColor: COLORS.teal,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 3,
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 8,
   },
   tealBtnText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: COLORS.white,
   },
@@ -932,39 +995,35 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.lightGray,
   },
   emptyIconBox: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '800',
     color: COLORS.darkGray,
-    letterSpacing: -0.3,
+    letterSpacing: -0.5,
   },
   emptySubtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: COLORS.mediumGray,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
+    paddingHorizontal: 20,
   },
   emptyBtn: {
-    marginTop: 12,
+    marginTop: 16,
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 28,
-    paddingVertical: 13,
-    borderRadius: 12,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 16,
   },
   emptyBtnText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
     color: COLORS.white,
   },

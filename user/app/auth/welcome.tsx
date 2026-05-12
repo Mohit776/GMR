@@ -4,6 +4,7 @@ import { Text } from '../../components/Text';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const COLORS = {
   primary: '#16A34A',      // Forest Green
@@ -16,6 +17,7 @@ const COLORS = {
 
 export default function WelcomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.container}>
@@ -28,7 +30,10 @@ export default function WelcomeScreen() {
       >
         <LinearGradient
           colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.8)']}
-          style={styles.gradient}
+          style={[
+            styles.gradient,
+            { paddingBottom: Math.max(insets.bottom, 20) + 20 }
+          ]}
         >
           {/* ── Header Section (Logo/Title) ── */}
           <View style={styles.headerContainer}>
@@ -85,7 +90,7 @@ export default function WelcomeScreen() {
           <TouchableOpacity
             style={styles.getStartedButton}
             activeOpacity={0.85}
-            onPress={() => router.push('/auth/signup')}
+            onPress={() => router.push('/auth/login')}
           >
             <Text style={styles.getStartedText}>Get Started</Text>
           </TouchableOpacity>

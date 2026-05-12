@@ -125,41 +125,62 @@ export default function AllGuidesScreen() {
 
   const renderGuide = ({ item }: { item: Guide }) => (
     <View style={styles.guideCard}>
-      <View style={styles.guideImagePlaceholder}>
+      {/* Left Side: Large Image with Badge */}
+      <View style={styles.guideImageContainer}>
         {item.profileImage ? (
-          <ExpoImage source={{ uri: item.profileImage }} style={{ width: '100%', height: '100%', borderRadius: 30 }} contentFit="cover" />
+          <ExpoImage source={{ uri: item.profileImage }} style={styles.guideImage} contentFit="cover" />
         ) : (
-          <Ionicons name="person" size={30} color={COLORS.mediumGray} style={{ opacity: 0.5 }} />
-        )}
-        {item.isOnline ? (
-          <View style={styles.onlineBadge}>
-            <View style={styles.onlineDot} />
+          <View style={styles.guideImagePlaceholder}>
+            <Ionicons name="person" size={40} color={COLORS.mediumGray} style={{ opacity: 0.5 }} />
           </View>
-        ) : null}
+        )}
+        {item.verified && (
+          <View style={styles.imageVerifiedBadge}>
+            <Ionicons name="shield-checkmark" size={10} color={COLORS.white} />
+            <Text style={styles.imageVerifiedText}>VERIFIED GUIDE</Text>
+          </View>
+        )}
       </View>
 
+      {/* Right Side: Info and Actions */}
       <View style={styles.guideInfo}>
-        <View style={styles.guideNameRow}>
-          <Text style={styles.guideName} numberOfLines={1}>{item.name}</Text>
-          {item.verified ? (
-            <ExpoImage source={require('../../assets/svg/verify-svgrepo-com.svg')} style={{ width: 14, height: 14, tintColor: COLORS.skyBlue }} contentFit="contain" />
+        <View style={styles.guideTitleRow}>
+          <View style={{ flex: 1 }}>
+            <View style={styles.guideNameRow}>
+              <Text style={styles.guideName} numberOfLines={1}>{item.name}</Text>
+              {item.verified ? (
+                <ExpoImage source={require('../../assets/svg/verify-svgrepo-com.svg')} style={{ width: 14, height: 14, tintColor: COLORS.skyBlue }} contentFit="contain" />
+              ) : null}
+            </View>
+            {item.specialty ? (
+              <Text style={styles.specialtyText} numberOfLines={2}>{item.specialty}</Text>
+            ) : null}
+          </View>
+
+          <TouchableOpacity 
+            style={styles.bookGuideBtn} 
+            activeOpacity={0.8}
+            onPress={() => router.push({ pathname: '/more/guideDetail', params: { id: item.id } })}
+          >
+            <Text style={styles.bookGuideBtnText}>Book</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.divider} />
+
+        <View style={styles.bottomMetaRow}>
+          <View style={styles.ratingReviewRow}>
+            <StarRating rating={item.rating} />
+            <Text style={styles.reviewCount}> ({item.reviews || 0} Reviews)</Text>
+          </View>
+          {item.isOnline ? (
+            <View style={styles.onlineBadgeRow}>
+              <View style={styles.onlineDot} />
+              <Text style={styles.onlineText}>Online</Text>
+            </View>
           ) : null}
         </View>
-        {item.specialty ? <Text style={styles.specialtyText}>{item.specialty}</Text> : null}
-        
-        <View style={styles.ratingReviewRow}>
-          <StarRating rating={item.rating} />
-          <Text style={styles.reviewCount}> ({item.reviews || 0} Reviews)</Text>
-        </View>
       </View>
-
-      <TouchableOpacity 
-        style={styles.bookGuideBtn} 
-        activeOpacity={0.8}
-        onPress={() => router.push({ pathname: '/more/guideDetail', params: { id: item.id } })}
-      >
-        <Text style={styles.bookGuideBtnText}>Book</Text>
-      </TouchableOpacity>
     </View>
   );
 
@@ -168,8 +189,6 @@ export default function AllGuidesScreen() {
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
       
 
-          {/* ── Top App Bar ── */}
-            <AppBar />
   
       {/* Search and Filter */}
       <View style={styles.searchFilterContainer}>
@@ -315,58 +334,90 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderRadius: 16,
     padding: 12,
-    marginBottom: 12,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
-    alignItems: 'center',
+    borderColor: '#E2E8F0',
+    alignItems: 'stretch',
     ...SHADOWS.small,
   },
-  guideImagePlaceholder: {
-    width: 60,
-    height: 60,
+  guideImageContainer: {
+    width: 100,
+    height: 120,
+    borderRadius: 12,
     backgroundColor: COLORS.lightGray,
-    borderRadius: 30,
+    marginRight: 14,
+    position: 'relative',
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  guideImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 12,
+  },
+  guideImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: COLORS.lightGray,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
-    marginRight: 12,
   },
-  placeholderEmoji: {
-    fontSize: 30,
-    opacity: 0.5,
-  },
-  onlineBadge: {
+  imageVerifiedBadge: {
     position: 'absolute',
-    bottom: 2,
-    right: 2,
-    backgroundColor: COLORS.white,
-    padding: 2,
-    borderRadius: 8,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(22, 163, 74, 0.95)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 5,
+    gap: 4,
   },
-  onlineDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: COLORS.onlineDot,
+  imageVerifiedText: {
+    color: COLORS.white,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   guideInfo: {
     flex: 1,
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  guideTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
   },
   guideNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginBottom: 2,
+    gap: 6,
+    marginBottom: 4,
   },
   guideName: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
     color: COLORS.darkGray,
+    letterSpacing: -0.3,
   },
   specialtyText: {
-    fontSize: 12,
+    fontSize: 13,
     color: COLORS.mediumGray,
-    marginBottom: 4,
+    lineHeight: 18,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.borderGray,
+    marginVertical: 12,
+  },
+  bottomMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   ratingReviewRow: {
     flexDirection: 'row',
@@ -377,7 +428,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
   },
-
   ratingText: {
     fontSize: 12,
     fontWeight: '700',
@@ -386,13 +436,36 @@ const styles = StyleSheet.create({
   reviewCount: {
     fontSize: 12,
     color: COLORS.mediumGray,
+    fontWeight: '500',
+  },
+  onlineBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  onlineDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.primary,
+  },
+  onlineText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.primary,
+    textTransform: 'uppercase',
   },
   bookGuideBtn: {
     backgroundColor: COLORS.primary,
     paddingVertical: 8,
     paddingHorizontal: 16,
-    borderRadius: 8,
-    marginLeft: 8,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   bookGuideBtnText: {
     color: COLORS.white,

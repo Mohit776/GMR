@@ -191,7 +191,7 @@ export default function RentAVehicleScreen() {
   return (
     <View style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
-      <AppBar />
+      
 
       <View style={styles.filterTabsContainer}>
         {/* Vehicle type filter */}
