@@ -11,6 +11,7 @@ import {
   sendBookingPush,
   verifyRazorpaySignature,
 } from '../_shared/razorpay.ts';
+import { sendPush } from '../_shared/push.ts';
 
 type VerifyRequest = {
   booking?: unknown;
@@ -106,21 +107,18 @@ Deno.serve(async (req) => {
 
       if (updateErr) throw updateErr;
 
-      // Notify guide that payment is done
+      // Notify guide that payment is done — must be awaited so Deno doesn't
+      // terminate before the push resolves (fire-and-forget would be silently dropped).
       if (preBooking.partner_id) {
-        console.log(`[razorpay-verify-payment] Sending payment confirmation to partner ${preBooking.partner_id} for booking ${bookingId}`);
-        auth.serviceClient.functions.invoke('send-push', {
-          body: {
-            userId: preBooking.partner_id,
-            title: 'Payment received! ✅',
-            body: `${preBooking.guest_name || 'The traveler'} has paid. Your booking is confirmed!`,
-            data: { type: 'payment_confirmed', bookingId, screen: 'bookings' },
-          },
-        }).then((res: any) => {
-          console.log(`[razorpay-verify-payment] Partner push result:`, res);
-        }).catch((err: any) => {
-          console.error(`[razorpay-verify-payment] Partner push failed:`, err.message);
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        const pushResult = await sendPush(supabaseUrl, serviceKey, {
+          userId: preBooking.partner_id,
+          title: 'Payment received! ✅',
+          body: `${preBooking.guest_name || 'The traveler'} has paid. Your booking is confirmed!`,
+          data: { type: 'payment_confirmed', bookingId, screen: 'bookings' },
         });
+        console.log(`[razorpay-verify-payment] Partner push result:`, pushResult);
       }
 
       return json({ success: true, bookingId, paymentId });

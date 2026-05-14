@@ -51,6 +51,17 @@ Deno.serve(async (req) => {
       throw new HttpError(403, 'You can only cancel your own booking.');
     }
 
+    // Only allow cancellation of bookings that haven't been completed yet
+    if (booking.status === 'completed') {
+      throw new HttpError(400, 'This booking has already been completed and cannot be cancelled.');
+    }
+    if (booking.status === 'cancelled') {
+      return json({ success: true, bookingId, notifiedCount: 0, alreadyCancelled: true });
+    }
+    if (!['pending', 'confirmed'].includes(booking.status)) {
+      throw new HttpError(400, `Booking in status '${booking.status}' cannot be cancelled.`);
+    }
+
     if (booking.status !== 'cancelled') {
       const { error: updateError } = await serviceClient
         .from('bookings')

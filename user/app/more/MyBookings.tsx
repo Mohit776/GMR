@@ -3,7 +3,8 @@ import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import { router } from 'expo-router';
 import React, { useState, useEffect } from 'react';
-import { ScrollView,
+import {
+  ScrollView,
   RefreshControl,
   StatusBar,
   StyleSheet,
@@ -25,7 +26,7 @@ async function invokeFunction<T>(name: string, body: unknown): Promise<T> {
       try {
         const payload = await context.json();
         message = payload?.error || payload?.message || message;
-      } catch {}
+      } catch { }
     }
     throw new Error(message);
   }
@@ -74,6 +75,7 @@ interface Booking {
   vehicleName: string;
   vehicleNumber: string;
   vehicleType: VehicleType;
+  vehicleImage?: string | null;
   date: string;
   time: string;
   duration: string;
@@ -92,17 +94,17 @@ const FILTER_TABS: TabType[] = ['Upcoming', 'Completed', 'Cancelled'];
 
 // ─── Status Config ─────────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<StatusType, { color: string; bg: string }> = {
-  Confirmed:     { color: COLORS.primary,  bg: '#DCFCE7' },
-  Pending:       { color: COLORS.orange,   bg: '#FFF7ED' },
-  Completed:     { color: COLORS.skyBlue,  bg: '#E0F2FE' },
-  Cancelled:     { color: COLORS.danger,   bg: '#FEE2E2' },
+  Confirmed: { color: COLORS.primary, bg: '#DCFCE7' },
+  Pending: { color: COLORS.orange, bg: '#FFF7ED' },
+  Completed: { color: COLORS.skyBlue, bg: '#E0F2FE' },
+  Cancelled: { color: COLORS.danger, bg: '#FEE2E2' },
 };
 
 // Guide-first booking sub-state display config
 const PRE_PAYMENT_CONFIG: Record<string, { color: string; bg: string; label: string }> = {
-  awaiting_guide:   { color: COLORS.orange,  bg: '#FFF7ED', label: '🔍 Finding Guide…' },
-  awaiting_payment: { color: COLORS.teal,    bg: '#F0FDFA', label: '✅ Guide Accepted – Pay Now' },
-  confirmed:        { color: COLORS.primary, bg: '#DCFCE7', label: '✔ Confirmed' },
+  awaiting_guide: { color: COLORS.orange, bg: '#FFF7ED', label: '🔍 Finding Guide…' },
+  awaiting_payment: { color: COLORS.teal, bg: '#F0FDFA', label: '✅ Guide Accepted – Pay Now' },
+  confirmed: { color: COLORS.primary, bg: '#DCFCE7', label: '✔ Confirmed' },
 };
 
 // ─── Vehicle Icon ──────────────────────────────────────────────────────────────
@@ -170,8 +172,13 @@ const BookingCard = ({ booking, onCancel }: { booking: Booking; onCancel?: (id: 
   const isCancelled = booking.tab === 'Cancelled';
   const isCompleted = booking.tab === 'Completed';
 
-  const prePayStatus = booking.pre_payment_status;
-  const isAwaitingGuide   = prePayStatus === 'awaiting_guide';
+  let prePayStatus = booking.pre_payment_status;
+  // Hide finding guide state for hotel or vehicle/rental bookings
+  if ((booking.booking_type === 'hotel' || booking.booking_type === 'vehicle' || booking.booking_type === 'rental') && prePayStatus === 'awaiting_guide') {
+    prePayStatus = null;
+  }
+
+  const isAwaitingGuide = prePayStatus === 'awaiting_guide';
   const isAwaitingPayment = prePayStatus === 'awaiting_payment';
 
   const prePayConfig = prePayStatus ? PRE_PAYMENT_CONFIG[prePayStatus] : null;
@@ -190,11 +197,18 @@ const BookingCard = ({ booking, onCancel }: { booking: Booking; onCancel?: (id: 
 
       {/* ── Card Header ── */}
       <View style={styles.cardHeader}>
-        {/* Vehicle Image Placeholder */}
-        <View style={styles.vehicleImagePlaceholder}>
-          <VehicleIcon type={booking.vehicleType} size={30} color={COLORS.mediumGray} />
-          <Text style={styles.imagePlaceholderLabel}>Image Here</Text>
-        </View>
+        {/* Vehicle Image */}
+        {booking.vehicleImage ? (
+          <ExpoImage
+            source={{ uri: booking.vehicleImage }}
+            style={styles.vehicleImage}
+            contentFit="cover"
+          />
+        ) : (
+          <View style={styles.vehicleImagePlaceholder}>
+            <VehicleIcon type={booking.vehicleType} size={30} color={COLORS.mediumGray} />
+          </View>
+        )}
 
         {/* Info */}
         <View style={styles.cardHeaderInfo}>
@@ -327,8 +341,8 @@ const BookingCard = ({ booking, onCancel }: { booking: Booking; onCancel?: (id: 
             >
               <Text style={styles.secondaryBtnText}>View Details</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.dangerBtn} 
+            <TouchableOpacity
+              style={styles.dangerBtn}
               activeOpacity={0.85}
               onPress={() => {
                 if (onCancel) {
@@ -415,7 +429,11 @@ const EmptyState = ({ tab }: { tab: TabType }) => {
       <Text style={styles.emptyTitle}>No {tab} Bookings</Text>
       <Text style={styles.emptySubtitle}>{subtitle}</Text>
       {tab === 'Upcoming' && (
-        <TouchableOpacity style={styles.emptyBtn} activeOpacity={0.85}>
+        <TouchableOpacity
+          style={styles.emptyBtn}
+          activeOpacity={0.85}
+          onPress={() => router.push('/(tabs)/Home')}
+        >
           <Text style={styles.emptyBtnText}>Rent a Vehicle</Text>
         </TouchableOpacity>
       )}
@@ -463,8 +481,8 @@ export default function MyBookingsScreen() {
         let rawStatus = (row.status || '').toLowerCase();
         let prePayStatus = row.pre_payment_status || null;
 
-        // Auto-expire unaccepted requests after 30 mins
-        if (rawStatus === 'pending' && prePayStatus === 'awaiting_guide' && row.created_at) {
+        // Auto-expire unaccepted requests after 30 mins (only for guides)
+        if (row.booking_type === 'guide' && rawStatus === 'pending' && prePayStatus === 'awaiting_guide' && row.created_at) {
           const createdAtTime = new Date(row.created_at).getTime();
           if (now - createdAtTime > THIRTY_MINS) {
             // Expire it in the database
@@ -489,11 +507,34 @@ export default function MyBookingsScreen() {
           timeStr = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
         }
 
+        // Fetch image: guide avatar from users table, vehicle image from rental_listings
+        let vehicleImage: string | null = null;
+        if (row.booking_type === 'guide' && row.item_id) {
+          // item_id for guide bookings is the guide's user ID
+          const { data: guideUser } = await supabase
+            .from('users')
+            .select('avatar_url')
+            .eq('id', row.item_id)
+            .maybeSingle();
+          vehicleImage = guideUser?.avatar_url ?? null;
+        } else if (row.item_id) {
+          // Vehicle / hotel booking – look up rental_listings
+          const { data: listing } = await supabase
+            .from('rental_listings')
+            .select('images')
+            .eq('id', row.item_id)
+            .maybeSingle();
+          if (listing?.images && Array.isArray(listing.images) && listing.images.length > 0) {
+            vehicleImage = listing.images[0];
+          }
+        }
+
         return {
           id: row.id,
           vehicleName: row.item_name || 'Unknown Booking',
           vehicleNumber: row.vehicle_number || 'N/A',
           vehicleType: row.vehicle_type || (row.booking_type === 'vehicle' ? 'Bike' : 'Car'),
+          vehicleImage,
           date: dateStr,
           time: timeStr,
           duration: row.days ? `${row.days} Days` : 'N/A',
@@ -524,7 +565,7 @@ export default function MyBookingsScreen() {
   const handleCancelBooking = async (bookingId: string) => {
     try {
       await invokeFunction('cancel-booking', { bookingId });
-      
+
       Alert.alert('Success', 'Booking cancelled successfully');
       onRefresh();
     } catch (error: any) {
@@ -621,7 +662,11 @@ export default function MyBookingsScreen() {
           )}
 
           {/* ── Need Help Banner ── */}
-          <View style={styles.helpBanner}>
+          <TouchableOpacity
+            style={styles.helpBanner}
+            activeOpacity={0.9}
+            onPress={() => router.push('/extra/HelpSupport')}
+          >
             <View style={styles.helpIconBox}>
               <Ionicons name="headset-outline" size={24} color={COLORS.primary} />
             </View>
@@ -629,10 +674,10 @@ export default function MyBookingsScreen() {
               <Text style={styles.helpTitle}>Need Help?</Text>
               <Text style={styles.helpSubtitle}>Trip Support · We're here 24/7</Text>
             </View>
-            <TouchableOpacity style={styles.helpCallBtn} activeOpacity={0.85}>
+            <View style={styles.helpCallBtn}>
               <ExpoImage source={require('../../assets/svg/phone-call-svgrepo-com.svg')} style={{ width: 22, height: 22, tintColor: COLORS.white }} />
-            </TouchableOpacity>
-          </View>
+            </View>
+          </TouchableOpacity>
 
           <View style={{ height: 20 }} />
         </ScrollView>
@@ -779,6 +824,14 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: 'center',
     gap: 14,
+  },
+  vehicleImage: {
+    width: 68,
+    height: 68,
+    borderRadius: 16,
+    flexShrink: 0,
+    backgroundColor: COLORS.lightGray,
+    ...SHADOWS.small,
   },
   vehicleImagePlaceholder: {
     width: 68,

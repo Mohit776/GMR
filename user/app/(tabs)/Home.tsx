@@ -1,7 +1,9 @@
 import { Text } from '../../components/Text';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Image as ExpoImage } from 'expo-image';
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../utils/supabase';
 // import * as Location from 'expo-location';
 import {
@@ -17,8 +19,7 @@ import {
   Dimensions
   
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import AppBar from '../../components/AppBar';
+
 import * as Location from 'expo-location';
 // ─── Color Palette ────────────────────────────────────────────────────────────
 const COLORS = {
@@ -109,7 +110,14 @@ const CATEGORIES: Category[] = [
 // ─── Reusable Star Rating ─────────────────────────────────────────────────────
 const StarRating = ({ rating }: { rating: number }) => (
   <View style={styles.starRow}>
-    <Text style={styles.starIcon}>⭐</Text>
+    {[1, 2, 3, 4, 5].map((s) => (
+      <Ionicons
+        key={s}
+        name={s <= Math.round(rating) ? 'star' : 'star-outline'}
+        size={10}
+        color="#FBBF24"
+      />
+    ))}
     <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
   </View>
 );
@@ -119,41 +127,68 @@ const GuideCard = ({ guide }: { guide: Guide }) => {
   const router = useRouter();
 
   return (
-    <View style={styles.guideCard}>
-      {/* Image Placeholder */}
+    <TouchableOpacity
+      style={styles.guideCard}
+      activeOpacity={0.92}
+      onPress={() => router.push({ pathname: '/more/guideDetail', params: { id: guide.id } })}
+    >
+      {/* Cover Photo */}
       <View style={styles.guideImagePlaceholder}>
         {guide.profileImage ? (
-          <ExpoImage source={{ uri: guide.profileImage }} style={{ width: '100%', height: '100%', borderRadius: 10 }} contentFit="cover" />
+          <ExpoImage
+            source={{ uri: guide.profileImage }}
+            style={{ width: '100%', height: '100%' }}
+            contentFit="cover"
+          />
         ) : (
-          <Text style={styles.placeholderEmoji}>👤</Text>
+          <View style={styles.coverPlaceholder}>
+            <Ionicons name="person" size={38} color={COLORS.mediumGray} style={{ opacity: 0.35 }} />
+          </View>
         )}
+
+        {/* Gradient overlay */}
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.65)']}
+          style={styles.cardGradient}
+        />
+
+        {/* Online pill — top-left */}
         {guide.isOnline && (
           <View style={styles.onlineBadge}>
             <View style={styles.onlineDot} />
             <Text style={styles.onlineText}>Online</Text>
           </View>
         )}
-      </View>
 
-      {/* Info */}
-      <View style={styles.guideInfo}>
-        <View style={styles.guideNameRow}>
-          <Text style={styles.guideName} numberOfLines={1}>{guide.name}</Text>
-          {guide.verified && <ExpoImage source={require('../../assets/svg/verify-svgrepo-com.svg')} style={{ width: 14, height: 14, tintColor: COLORS.skyBlue }} contentFit="contain" />}
+        {/* Name + verified over gradient */}
+        <View style={styles.coverBottomOverlay}>
+          <View style={styles.guideNameRow}>
+            <Text style={styles.guideName} numberOfLines={1}>{guide.name}</Text>
+            {guide.verified && (
+              <Ionicons name="shield-checkmark" size={12} color="#60F5A1" style={{ marginLeft: 3 }} />
+            )}
+          </View>
         </View>
-        <StarRating rating={guide.rating} />
-        <Text style={styles.reviewCount}>({guide.reviews} Reviews)</Text>
       </View>
 
-      {/* CTA */}
-      <TouchableOpacity
-        style={styles.bookGuideBtn}
-        activeOpacity={0.8}
-        onPress={() => router.push({ pathname: '/more/guideDetail', params: { id: guide.id } })}
-      >
-        <Text style={styles.bookGuideBtnText}>Book Guide</Text>
-      </TouchableOpacity>
-    </View>
+      {/* Card Body */}
+      <View style={styles.guideInfo}>
+        {/* Stars + review count */}
+        <View style={styles.guideMetaRow}>
+          <StarRating rating={guide.rating} />
+          <Text style={styles.reviewCount}> ({guide.reviews})</Text>
+        </View>
+
+        {/* CTA */}
+        <TouchableOpacity
+          style={styles.bookGuideBtn}
+          activeOpacity={0.85}
+          onPress={() => router.push({ pathname: '/more/guideDetail', params: { id: guide.id } })}
+        >
+          <Text style={styles.bookGuideBtnText}>Book Guide</Text>
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
   );
 };
 
@@ -675,7 +710,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 10,
+    paddingTop: 0,
     paddingBottom: 12,
   },
   sectionTitle: {
@@ -699,28 +734,41 @@ const styles = StyleSheet.create({
 
   // Guide Card
   guideCard: {
-    width: 160,
+    width: 140,
     backgroundColor: COLORS.white,
     borderRadius: 18,
     marginRight: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    ...SHADOWS.small,
+    overflow: 'hidden',
+    ...SHADOWS.medium,
   },
   guideImagePlaceholder: {
     width: '100%',
-    height: 110,
+    height: 120,
     backgroundColor: COLORS.lightGray,
-    borderRadius: 10,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  coverPlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#E9EFF6',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
-    position: 'relative',
   },
-  placeholderEmoji: {
-    fontSize: 36,
-    opacity: 0.4,
+  cardGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '60%',
+  },
+  coverBottomOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 9,
+    paddingBottom: 8,
   },
   onlineBadge: {
     position: 'absolute',
@@ -728,71 +776,75 @@ const styles = StyleSheet.create({
     left: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: 'rgba(0,0,0,0.52)',
     paddingHorizontal: 7,
     paddingVertical: 3,
     borderRadius: 20,
     gap: 4,
   },
   onlineDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: COLORS.onlineDot,
   },
   onlineText: {
     fontSize: 10,
     color: COLORS.white,
-    fontWeight: '600',
-  },
-  guideInfo: {
-    marginBottom: 10,
+    fontWeight: '700',
   },
   guideNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginBottom: 4,
   },
   guideName: {
     fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.darkGray,
+    fontWeight: '800',
+    color: COLORS.white,
     flex: 1,
+    letterSpacing: -0.2,
   },
-  verifiedBadge: {
-    fontSize: 12,
-    color: COLORS.skyBlue,
+  guideInfo: {
+    padding: 9,
+    gap: 7,
+  },
+  guideMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   starRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: 2,
   },
   starIcon: {
     fontSize: 12,
   },
   ratingText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: COLORS.darkGray,
+    marginLeft: 3,
   },
   reviewCount: {
     fontSize: 11,
     color: COLORS.mediumGray,
-    marginTop: 2,
+    fontWeight: '500',
   },
   bookGuideBtn: {
     backgroundColor: COLORS.primary,
-    paddingVertical: 9,
-    borderRadius: 8,
+    paddingVertical: 8,
+    borderRadius: 9,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 4,
   },
   bookGuideBtnText: {
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.white,
-    letterSpacing: 0.2,
+    letterSpacing: 0.1,
   },
 
   // Vehicle Card

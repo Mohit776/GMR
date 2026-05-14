@@ -63,7 +63,7 @@ export default function DocumentUploadScreen() {
       const durationMs = asset.duration;
       // Duration check: 30s (30000ms) to 60s (60000ms)
       if (durationMs && (durationMs < 29000 || durationMs > 61000)) {
-        Alert.alert('Invalid Video', 'KYC video must be between 30 seconds and 1 minute.');
+        Alert.alert('Invalid Video', 'Demo Video must be between 30 seconds and 1 minute.');
         return;
       }
       setVideoFile({
@@ -77,7 +77,7 @@ export default function DocumentUploadScreen() {
 
   const handleRecordVideo = async () => {
     const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-    
+
     if (permissionResult.granted === false) {
       Alert.alert("Permission Required", "You need to allow camera access to record a video.");
       return;
@@ -95,7 +95,7 @@ export default function DocumentUploadScreen() {
       const durationMs = asset.duration;
       // Duration check: 30s (30000ms) to 60s (60000ms)
       if (durationMs && (durationMs < 29000 || durationMs > 61000)) {
-        Alert.alert('Invalid Video', 'KYC video must be between 30 seconds and 1 minute.');
+        Alert.alert('Invalid Video', 'Demo Video must be between 30 seconds and 1 minute.');
         return;
       }
       setVideoFile({
@@ -131,7 +131,7 @@ export default function DocumentUploadScreen() {
 
   const handleTakePhoto = async () => {
     const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-    
+
     if (permissionResult.granted === false) {
       Alert.alert("Permission Required", "You need to allow camera access to take a photo.");
       return;
@@ -167,7 +167,7 @@ export default function DocumentUploadScreen() {
 
   const handleSkip = async () => {
     if (!user) return;
-    
+
     await updateUserProfile(user.uid, {
       isOnboarded: true,
     });
@@ -186,7 +186,7 @@ export default function DocumentUploadScreen() {
     }
 
     if (isGuide && !videoFile) {
-      Alert.alert('Missing KYC Video', 'As a guide, you must upload a 30 to 60 second KYC video.');
+      Alert.alert('Missing Demo Video', 'As a guide, you must upload a 30 to 60 second Demo Video.');
       return;
     }
 
@@ -200,12 +200,12 @@ export default function DocumentUploadScreen() {
       for (const file of files) {
         const fileName = `${Date.now()}_${file.name}`;
         const mimeType = file.mimeType || 'application/octet-stream';
-        
+
         // upload local file to Supabase
         const downloadUrl = await uploadToSupabase(file.uri, mimeType, fileName, 'documents');
         uploadedUrls.push(downloadUrl);
       }
-      
+
       let kycVideoUrl = profile?.kycVideoUrl;
       if (videoFile) {
         const fileName = `${Date.now()}_${videoFile.name}`;
@@ -298,12 +298,12 @@ export default function DocumentUploadScreen() {
         {isGuide && (
           <>
             <Text style={[styles.subheading, { marginBottom: Spacing.sm, marginTop: Spacing.sm, fontWeight: '700', color: Colors.text }]}>
-              KYC Video (Mandatory for Guides)
+              Demo Video (Mandatory for Guides)
             </Text>
             <Text style={[styles.uploadSubhint, { marginBottom: Spacing.md }]}>
               Please record or upload a 30 to 60 second video introducing yourself.
             </Text>
-            
+
             <View style={styles.uploadOptions}>
               <TouchableOpacity style={styles.uploadBox} onPress={handlePickVideo} activeOpacity={0.8}>
                 <Video color={Colors.primary} size={32} style={{ marginBottom: 8 }} />
@@ -314,7 +314,7 @@ export default function DocumentUploadScreen() {
                 <Text style={styles.uploadText}>Record</Text>
               </TouchableOpacity>
             </View>
-            
+
             {videoFile && (
               <View style={[styles.fileRow, { marginBottom: Spacing.xl }]}>
                 <View style={styles.fileInfo}>

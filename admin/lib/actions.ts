@@ -51,7 +51,6 @@ export async function deleteListing(id: string) {
       .delete()
       .eq('id', id);
     if (error) throw error;
-
     revalidatePath('/listings');
     return { success: true };
   } catch (error: any) {
@@ -59,6 +58,40 @@ export async function deleteListing(id: string) {
     return { error: error.message };
   }
 }
+
+export async function getSettings() {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('app_settings')
+      .select('service_fee_percentage')
+      .eq('id', 1)
+      .single();
+      
+    if (error && error.code !== 'PGRST116') throw error;
+    
+    return { success: true, serviceFee: data?.service_fee_percentage || 5 };
+  } catch (error: any) {
+    console.error('Error fetching settings:', error);
+    return { error: error.message };
+  }
+}
+
+export async function updateServiceFee(fee: number) {
+  try {
+    const { error } = await supabaseAdmin
+      .from('app_settings')
+      .upsert({ id: 1, service_fee_percentage: fee });
+
+    if (error) throw error;
+
+    revalidatePath('/settings');
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error updating service fee:', error);
+    return { error: error.message };
+  }
+}
+
 
 export async function updateListing(
   id: string,

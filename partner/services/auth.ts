@@ -24,6 +24,7 @@ export interface PartnerProfile {
   profileData: any;
   documents?: string[];
   kycVideoUrl?: string | null;
+  photoUrl?: string | null;
   createdAt: string;
 }
 
@@ -83,6 +84,7 @@ export async function getUserDoc(uid: string): Promise<PartnerProfile | null> {
     profileData: data.profile_data || {},
     documents: data.documents || [],
     kycVideoUrl: data.kyc_video_url || null,
+    photoUrl: data.photo_url || null,
     createdAt: data.created_at,
   };
 }
@@ -195,6 +197,7 @@ export async function updateUserProfile(uid: string, updates: Partial<PartnerPro
   }
   if (updates.documents !== undefined) dbUpdates.documents = updates.documents;
   if (updates.kycVideoUrl !== undefined) dbUpdates.kyc_video_url = updates.kycVideoUrl;
+  if (updates.photoUrl !== undefined) dbUpdates.photo_url = updates.photoUrl;
   if (updates.createdAt !== undefined) dbUpdates.created_at = updates.createdAt;
 
   const { error } = await supabase.from('users').update(dbUpdates).eq('id', uid);
@@ -246,6 +249,7 @@ export function listenToUserDoc(uid: string, callback: (profile: PartnerProfile 
           profileData: data.profile_data || {},
           documents: data.documents || [],
           kycVideoUrl: data.kyc_video_url || null,
+          photoUrl: data.photo_url || null,
           createdAt: data.created_at,
         });
       }

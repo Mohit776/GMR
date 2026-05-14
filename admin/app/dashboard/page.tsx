@@ -104,8 +104,8 @@ export default async function DashboardPage() {
             <h3 className="font-semibold text-gray-800 mb-4">Partner Status</h3>
             <div className="space-y-3">
               {[
-                { label: 'Verified', count: dbStats.totalPartners, color: 'text-green-600 bg-green-50' },
-                { label: 'Pending', count: 0, color: 'text-yellow-600 bg-yellow-50' },
+                { label: 'Verified', count: dbStats.verifiedPartners, color: 'text-green-600 bg-green-50' },
+                { label: 'Pending', count: dbStats.pendingPartners, color: 'text-yellow-600 bg-yellow-50' },
                 { label: 'Suspended', count: 0, color: 'text-red-600 bg-red-50' },
               ].map((item) => (
                 <div key={item.label} className="flex items-center justify-between">

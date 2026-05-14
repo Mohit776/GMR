@@ -33,6 +33,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { uploadToSupabase } from '../../services/storage';
 import { supabase } from '../../services/supabase';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { updateUserProfile } from '../../services/auth';
 
 export default function ListingsScreen() {
   const { user, profile, refreshProfile } = useAuthStore();
@@ -602,6 +603,7 @@ function GuideSettingsView({ profile, user, refreshProfile }: {
   const [rate, setRate] = useState(String(pd.per_hour_rate || ''));
   const [avail, setAvail] = useState(pd.is_available !== false);
   const [videoUrl, setVideoUrl] = useState(profile?.kycVideoUrl || '');
+  const [maxHours, setMaxHours] = useState(String(pd.max_booking_hours || '12'));
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -612,6 +614,7 @@ function GuideSettingsView({ profile, user, refreshProfile }: {
       setRate(String(p.per_hour_rate || ''));
       setAvail(p.is_available !== false);
       setVideoUrl(profile.kycVideoUrl || '');
+      setMaxHours(String(p.max_booking_hours || '12'));
     }
   }, [profile]);
 
@@ -625,14 +628,14 @@ function GuideSettingsView({ profile, user, refreshProfile }: {
     if (!user) return;
     const n = parseFloat(rate);
     if (!n || n <= 0) { Alert.alert('Invalid', 'Enter a valid hourly rate.'); return; }
+    const mh = parseInt(maxHours);
+    if (!mh || mh < 3) { Alert.alert('Invalid', 'Max booking hours must be at least 3.'); return; }
     setSaving(true);
     try {
-      const updated = { ...(profile?.profileData || {}), per_hour_rate: n };
-      await supabase.from('users').update({
-        profile_data: updated, updated_at: new Date().toISOString(),
-      }).eq('id', user.uid);
+      const updated = { ...(profile?.profileData || {}), per_hour_rate: n, max_booking_hours: mh };
+      await updateUserProfile(user.uid, { profileData: updated });
       await refreshProfile();
-      Alert.alert('Saved', 'Hourly rate updated.');
+      Alert.alert('Saved', 'Settings updated.');
     } catch (e: any) { Alert.alert('Error', e.message || 'Failed to save.'); }
     finally { setSaving(false); }
   };
@@ -642,9 +645,7 @@ function GuideSettingsView({ profile, user, refreshProfile }: {
     setAvail(v);
     try {
       const updated = { ...(profile?.profileData || {}), is_available: v };
-      await supabase.from('users').update({
-        profile_data: updated, updated_at: new Date().toISOString(),
-      }).eq('id', user.uid);
+      await updateUserProfile(user.uid, { profileData: updated });
       await refreshProfile();
     } catch (e: any) { setAvail(!v); Alert.alert('Error', e.message || 'Failed.'); }
   };
@@ -661,9 +662,7 @@ function GuideSettingsView({ profile, user, refreshProfile }: {
       const uri = res.assets[0].uri;
       const fname = uri.split('/').pop() || `demo_${Date.now()}.mp4`;
       const url = await uploadToSupabase(uri, 'video/mp4', fname, 'demo-videos');
-      await supabase.from('users').update({
-        kyc_video_url: url, updated_at: new Date().toISOString(),
-      }).eq('id', user.uid);
+      await updateUserProfile(user.uid, { kycVideoUrl: url });
       setVideoUrl(url);
       await refreshProfile();
       Alert.alert('Success', 'Demo video updated.');
@@ -705,7 +704,8 @@ function GuideSettingsView({ profile, user, refreshProfile }: {
             <View style={gs.iconCircle}><DollarSign color={Colors.primary} size={18} /></View>
             <Text style={gs.cardTitle}>Per Hour Rate</Text>
           </View>
-          <Text style={gs.cardDesc}>Set your hourly rate. Users will see this on your profile.</Text>
+          <Text style={gs.cardDesc}>Set your hourly rate and max booking duration for users.</Text>
+          <Text style={[gs.cardDesc, { fontSize: 12, color: Colors.textMuted, marginBottom: 2 }]}>Hourly Rate</Text>
           <View style={gs.rateRow}>
             <Text style={gs.currency}>₹</Text>
             <TextInput
@@ -718,12 +718,24 @@ function GuideSettingsView({ profile, user, refreshProfile }: {
             />
             <Text style={gs.rateUnit}>/ hour</Text>
           </View>
+          <Text style={[gs.cardDesc, { fontSize: 12, color: Colors.textMuted, marginBottom: 2, marginTop: 12 }]}>Max Booking Duration</Text>
+          <View style={gs.rateRow}>
+            <TextInput
+              style={[gs.rateInput, { flex: 1 }]}
+              placeholder="e.g. 8"
+              placeholderTextColor={Colors.textLight}
+              value={maxHours}
+              onChangeText={setMaxHours}
+              keyboardType="numeric"
+            />
+            <Text style={gs.rateUnit}>hrs max</Text>
+          </View>
           <TouchableOpacity
             style={[gs.saveBtn, saving && { opacity: 0.6 }]}
             onPress={saveRate} disabled={saving} activeOpacity={0.85}
           >
             {saving ? <ActivityIndicator color={Colors.white} size="small" /> :
-              <Text style={gs.saveBtnText}>Save Rate</Text>}
+              <Text style={gs.saveBtnText}>Save Settings</Text>}
           </TouchableOpacity>
         </View>
 

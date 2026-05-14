@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 // import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
-import AppBar from '../../components/AppBar';
+
 import { supabase } from '../../utils/supabase';
 
 // ─── Color Palette ─────────────────────────────────────────────────────────────
@@ -383,7 +383,7 @@ const styles = StyleSheet.create({
   },
   imageContainer: {
     width: '100%',
-    height: 220,
+    height: 155,
     backgroundColor: '#F3F4F6',
     position: 'relative',
   },
@@ -402,7 +402,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 60,
+    height: 40,
     backgroundColor: 'rgba(0,0,0,0.2)',
   },
   imageGradientBottom: {
@@ -418,7 +418,7 @@ const styles = StyleSheet.create({
   },
   imageOverlayTop: {
     position: 'absolute',
-    top: 16,
+    top: 2,
     left: 16,
     right: 16,
     flexDirection: 'row',
@@ -450,7 +450,7 @@ const styles = StyleSheet.create({
   },
   imageOverlayBottom: {
     position: 'absolute',
-    bottom: 16,
+    bottom: 8,
     left: 16,
     right: 16,
     flexDirection: 'row',
@@ -487,7 +487,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   detailsContainer: {
-    padding: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
   },
   headerRow: {
     flexDirection: 'row',
@@ -520,14 +521,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 20,
+    marginBottom: 10,
   },
   roomInfoTag: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.lightGray,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
     borderRadius: 8,
     gap: 6,
   },
@@ -547,7 +548,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     borderTopWidth: 1,
     borderTopColor: COLORS.lightGray,
-    paddingTop: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
   },
   reviewsContainer: {
     flex: 1,

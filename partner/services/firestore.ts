@@ -179,7 +179,17 @@ export async function getBookings(partnerId: string): Promise<Booking[]> {
       const createdAt = new Date(row.created_at).getTime();
       const diffMins = (now - createdAt) / (1000 * 60);
       if (diffMins > 30) {
-        await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', row.id);
+        // Update both status fields so all apps (user, partner, admin) see a consistent state
+        await supabase
+          .from('bookings')
+          .update({ status: 'cancelled', pre_payment_status: 'cancelled' })
+          .eq('id', row.id);
+        // Also cancel any pending booking requests so guides no longer see this
+        await supabase
+          .from('booking_requests')
+          .update({ status: 'cancelled' })
+          .eq('booking_id', row.id)
+          .eq('status', 'pending');
         rawStatus = 'cancelled';
       }
     }

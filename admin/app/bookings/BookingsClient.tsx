@@ -19,7 +19,7 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import { Booking } from '@/lib/mockData';
 
-const ITEMS_PER_PAGE = 5;
+const ITEMS_PER_PAGE = 10;
 
 export default function BookingsClient({ bookings }: { bookings: Booking[] }) {
   const [statusFilter, setStatusFilter] = useState('all');
@@ -73,7 +73,7 @@ export default function BookingsClient({ bookings }: { bookings: Booking[] }) {
     {
       key: 'sno',
       header: 'S.No',
-      render: (b) => <span className="text-gray-400 text-xs font-mono">#{b.id}</span>,
+      render: (b) => <span className="text-gray-400 text-xs font-mono">#{b.id.substring(0, 8)}</span>,
     },
     {
       key: 'client',

@@ -7,6 +7,8 @@ import {
   StatusBar,
   ActivityIndicator,
   Dimensions,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { Text } from '../../components/Text';
 import { Ionicons } from '@expo/vector-icons';
@@ -51,6 +53,7 @@ export default function HotelDetailScreen() {
   const [isSaved, setIsSaved] = useState(false);
   const [hotel, setHotel] = useState<Hotel | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fullScreenIndex, setFullScreenIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -305,12 +308,13 @@ export default function HotelDetailScreen() {
                 contentContainerStyle={styles.galleryContainer}
               >
                 {hotel.images.map((img: string, index: number) => (
-                  <ExpoImage 
-                    key={index} 
-                    source={{ uri: img }} 
-                    style={styles.galleryImage} 
-                    contentFit="cover" 
-                  />
+                  <TouchableOpacity key={index} activeOpacity={0.8} onPress={() => setFullScreenIndex(index)}>
+                    <ExpoImage 
+                      source={{ uri: img }} 
+                      style={styles.galleryImage} 
+                      contentFit="cover" 
+                    />
+                  </TouchableOpacity>
                 ))}
               </ScrollView>
             </View>
@@ -360,6 +364,47 @@ export default function HotelDetailScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* ── Full Screen Image Modal ── */}
+      <Modal
+        visible={fullScreenIndex !== null}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setFullScreenIndex(null)}
+      >
+        <View style={styles.fullScreenModal}>
+          <TouchableOpacity 
+            style={[styles.closeModalButton, { top: Math.max(insets.top, 20) }]} 
+            onPress={() => setFullScreenIndex(null)}
+          >
+            <Ionicons name="close" size={28} color="#FFFFFF" />
+          </TouchableOpacity>
+          {fullScreenIndex !== null && hotel.images && (
+            <FlatList
+              data={hotel.images}
+              keyExtractor={(item, index) => index.toString()}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              initialScrollIndex={fullScreenIndex}
+              getItemLayout={(_, index) => ({
+                length: width,
+                offset: width * index,
+                index,
+              })}
+              renderItem={({ item }) => (
+                <View style={{ width, height: '100%', justifyContent: 'center' }}>
+                  <ExpoImage 
+                    source={{ uri: item }} 
+                    style={styles.fullScreenImage} 
+                    contentFit="contain" 
+                  />
+                </View>
+              )}
+            />
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -688,5 +733,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: 0.5,
+  },
+
+  // Modal Full Screen Image
+  fullScreenModal: {
+    flex: 1,
+    backgroundColor: '#000000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeModalButton: {
+    position: 'absolute',
+    right: 20,
+    zIndex: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullScreenImage: {
+    width: width,
+    height: '100%',
   },
 });

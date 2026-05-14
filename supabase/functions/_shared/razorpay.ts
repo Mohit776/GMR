@@ -3,7 +3,7 @@ import { createClient, type SupabaseClient, type User } from 'https://esm.sh/@su
 export type BookingInput = {
   amount: number;
   description?: string;
-  bookingType: string;
+  bookingType: 'vehicle' | 'hotel' | 'guide';
   itemId: string;
   itemName?: string;
   days: number;
@@ -134,7 +134,7 @@ export async function readBookingInput(req: Request): Promise<BookingInput> {
   return {
     amount,
     description: String(body.description || 'Booking Payment').slice(0, 240),
-    bookingType,
+    bookingType: bookingType as 'vehicle' | 'hotel' | 'guide',
     itemId,
     itemName: String(body.itemName || '').slice(0, 240),
     days,
@@ -297,7 +297,7 @@ function getEnv(name: string) {
   return value;
 }
 
-async function resolveListingBooking(serviceClient: SupabaseClient, input: BookingInput) {
+async function resolveListingBooking(serviceClient: SupabaseClient, input: BookingInput): Promise<ResolvedBooking> {
   const expectedListingType = input.bookingType === 'vehicle' ? 'rental' : input.bookingType;
   const { data: listing, error } = await serviceClient
     .from('listings')
@@ -309,10 +309,13 @@ async function resolveListingBooking(serviceClient: SupabaseClient, input: Booki
   if (!listing || listing.type !== expectedListingType || listing.is_active !== true) {
     throw new HttpError(404, 'Booking item is not available.');
   }
+  
+  const { data: appSettings } = await serviceClient.from('app_settings').select('service_fee_percentage').eq('id', 1).single();
+  const feePercent = appSettings?.service_fee_percentage != null ? Number(appSettings.service_fee_percentage) : 5;
 
   const unitPrice = toPositiveNumber(listing.price, 'Listing price is invalid.');
   const quantity = input.days;
-  const pricing = validatePricing(input, unitPrice, quantity);
+  const pricing = validatePricing(input, unitPrice, quantity, feePercent);
 
   return {
     input,
@@ -328,7 +331,7 @@ async function resolveListingBooking(serviceClient: SupabaseClient, input: Booki
   };
 }
 
-async function resolveGuideBooking(serviceClient: SupabaseClient, input: BookingInput) {
+async function resolveGuideBooking(serviceClient: SupabaseClient, input: BookingInput): Promise<ResolvedBooking> {
   const guideId = input.itemId || input.partnerId || '';
   const { data: guide, error: guideError } = await serviceClient
     .from('users')
@@ -358,7 +361,11 @@ async function resolveGuideBooking(serviceClient: SupabaseClient, input: Booking
   const listingPrice = listing ? Number(listing.price || 0) : 0;
   const unitPrice = toPositiveNumber(profilePrice > 0 ? profilePrice : listingPrice, 'Guide price is invalid.');
   const quantity = input.days;
-  const pricing = validatePricing(input, unitPrice, quantity);
+  
+  const { data: appSettings } = await serviceClient.from('app_settings').select('service_fee_percentage').eq('id', 1).single();
+  const feePercent = appSettings?.service_fee_percentage != null ? Number(appSettings.service_fee_percentage) : 5;
+  
+  const pricing = validatePricing(input, unitPrice, quantity, feePercent);
 
   return {
     input,
@@ -374,9 +381,9 @@ async function resolveGuideBooking(serviceClient: SupabaseClient, input: Booking
   };
 }
 
-function validatePricing(input: BookingInput, unitPrice: number, quantity: number) {
+function validatePricing(input: BookingInput, unitPrice: number, quantity: number, feePercent: number) {
   const subtotal = unitPrice * quantity;
-  const serviceFee = Math.round(subtotal * 0.05);
+  const serviceFee = Math.round(subtotal * (feePercent / 100));
   const requestedDiscount = Math.round((Number(input.discountAmount) || 0) * 100) / 100;
   const maxDiscount = input.coupon ? Math.round(subtotal * 0.1) : 0;
 

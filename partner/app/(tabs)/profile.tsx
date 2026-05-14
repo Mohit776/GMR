@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,28 +9,115 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { router } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../../store/useAuthStore';
 import { Colors } from '../../constants/colors';
 import { Spacing, Radius, FontSize } from '../../constants/theme';
 import { signOut as signOutUser, updateUserProfile } from '../../services/auth';
+import { uploadToSupabase } from '../../services/storage';
 
-import { Mail, Phone, Clipboard, Bell, Lock, HelpCircle, FileText, LogOut, ChevronRight, Compass, Hotel, Bike, Edit2 } from 'lucide-react-native';
+import {
+  Mail,
+  Phone,
+  Clipboard,
+  Bell,
+  Lock,
+  HelpCircle,
+  FileText,
+  LogOut,
+  ChevronRight,
+  Compass,
+  Hotel,
+  Bike,
+  Edit2,
+  Camera,
+} from 'lucide-react-native';
 
 export default function ProfileScreen() {
-  const { user, profile, setUser, setProfile, reset, refreshProfile } = useAuthStore();
+  const { user, profile, setProfile, reset, refreshProfile } = useAuthStore();
+
+  // ── Basic info edit state ──────────────────────────────────────────────────
   const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(profile?.name ?? '');
-  const [phone, setPhone] = useState(profile?.phone ?? '');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // ── Business profile edit state ────────────────────────────────────────────
   const [editingBusiness, setEditingBusiness] = useState(false);
-  const [businessData, setBusinessData] = useState<Record<string, any>>(profile?.profileData ?? {});
+  const [businessData, setBusinessData] = useState<Record<string, any>>({});
   const [savingBusiness, setSavingBusiness] = useState(false);
+
+  // ── Photo upload state ─────────────────────────────────────────────────────
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  // ── Other UI state ─────────────────────────────────────────────────────────
   const [signingOut, setSigningOut] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  // ── Sync local state whenever the profile changes ──────────────────────────
+  useEffect(() => {
+    if (profile) {
+      setName(profile.name ?? '');
+      setPhone(profile.phone ?? '');
+      if (!editingBusiness) {
+        setBusinessData(profile.profileData ?? {});
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile]);
+
+  // ── Derived values ─────────────────────────────────────────────────────────
+  const role = profile?.role ?? 'guide';
+  const roleLabel =
+    role === 'guide' ? 'Tour Guide' : role === 'hotel' ? 'Hotel Owner' : 'Rental Owner';
+  const RoleIcon = role === 'guide' ? Compass : role === 'hotel' ? Hotel : Bike;
+  const roleColor =
+    role === 'guide'
+      ? Colors.roleGuide
+      : role === 'hotel'
+      ? Colors.roleHotel
+      : Colors.roleRental;
+
+  const currentProfileData: Record<string, any> = profile?.profileData ?? {};
+
+  const PRIORITY_KEYS: Record<string, string[]> = {
+    guide: ['city', 'location', 'specialisations', 'availability', 'maxGroupSize', 'pricePerDay', 'bio', 'certifications', 'languages'],
+    hotel: ['hotelName', 'city', 'location', 'roomTypes', 'pricePerNight', 'totalRooms', 'checkInTime', 'checkOutTime', 'amenities'],
+    rental: ['shopName', 'city', 'location', 'vehicleTypes', 'pricePerDay', 'totalVehicles', 'securityDeposit', 'docsRequired'],
+  };
+
+  const LABELS: Record<string, string> = {
+    city: 'City', location: 'Location', specialisations: 'Specialisations',
+    availability: 'Availability', maxGroupSize: 'Max Group Size',
+    pricePerDay: 'Price / Day (₹)', bio: 'Bio', certifications: 'Certifications',
+    languages: 'Languages', hotelName: 'Hotel Name', roomTypes: 'Room Types',
+    pricePerNight: 'Price / Night (₹)', totalRooms: 'Total Rooms',
+    checkInTime: 'Check-in Time', checkOutTime: 'Check-out Time', amenities: 'Amenities',
+    shopName: 'Shop Name', vehicleTypes: 'Vehicle Types', totalVehicles: 'Total Vehicles',
+    securityDeposit: 'Security Deposit (₹)', docsRequired: 'Docs Required from Renter',
+  };
+
+  const priorityKeys = PRIORITY_KEYS[role] ?? Object.keys(currentProfileData);
+
+  const profileRows = priorityKeys
+    .filter((key) => {
+      const v = currentProfileData[key];
+      return v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && v.length === 0);
+    })
+    .map((key) => ({
+      key,
+      label: LABELS[key] ?? key.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase()),
+      value: Array.isArray(currentProfileData[key])
+        ? currentProfileData[key].join(', ')
+        : String(currentProfileData[key]),
+    }));
+
+  const hasBusinessData = Object.keys(currentProfileData).length > 0;
+
+  // ── Pull-to-refresh ────────────────────────────────────────────────────────
   const onRefresh = async () => {
     setRefreshing(true);
     try {
@@ -42,28 +129,59 @@ export default function ProfileScreen() {
     }
   };
 
-  const role = profile?.role ?? 'guide';
-  const roleLabel = role === 'guide' ? 'Tour Guide' : role === 'hotel' ? 'Hotel Owner' : 'Rental Owner';
-  const RoleIcon = role === 'guide' ? Compass : role === 'hotel' ? Hotel : Bike;
-  const roleColor =
-    role === 'guide' ? Colors.roleGuide : role === 'hotel' ? Colors.roleHotel : Colors.roleRental;
+  // ── Photo picker & upload ──────────────────────────────────────────────────
+  const handleChangePhoto = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Please allow access to your photo library to update your profile photo.');
+      return;
+    }
 
-  const profileData = profile?.profileData ?? {};
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
 
+    if (result.canceled || !result.assets?.length) return;
+
+    const asset = result.assets[0];
+    if (!user) return;
+
+    setUploadingPhoto(true);
+    try {
+      const fileName = `avatar-${user.uid}.jpg`;
+      const publicUrl = await uploadToSupabase(asset.uri, asset.mimeType ?? 'image/jpeg', fileName, 'avatars');
+      await updateUserProfile(user.uid, { photoUrl: publicUrl });
+      setProfile({ ...profile!, photoUrl: publicUrl });
+    } catch (err) {
+      console.error('Photo upload error:', err);
+      Alert.alert('Upload Failed', 'Could not update your profile photo. Please try again.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  // ── Save basic info ────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!user) return;
     setSaving(true);
     try {
-      await updateUserProfile(user.uid, { name: name.trim(), phone: phone.trim() });
-      setProfile({ ...profile!, name: name.trim(), phone: phone.trim() });
+      const trimmedName = name.trim();
+      const trimmedPhone = phone.trim();
+      await updateUserProfile(user.uid, { name: trimmedName, phone: trimmedPhone });
+      setProfile({ ...profile!, name: trimmedName, phone: trimmedPhone });
       setEditing(false);
-    } catch {
-      Alert.alert('Error', 'Could not save changes.');
+    } catch (err) {
+      console.error('handleSave error:', err);
+      Alert.alert('Error', 'Could not save changes. Please try again.');
     } finally {
       setSaving(false);
     }
   };
 
+  // ── Save business profile ──────────────────────────────────────────────────
   const handleSaveBusiness = async () => {
     if (!user) return;
     setSavingBusiness(true);
@@ -71,13 +189,15 @@ export default function ProfileScreen() {
       await updateUserProfile(user.uid, { profileData: businessData });
       setProfile({ ...profile!, profileData: businessData });
       setEditingBusiness(false);
-    } catch {
-      Alert.alert('Error', 'Could not save business profile.');
+    } catch (err) {
+      console.error('handleSaveBusiness error:', err);
+      Alert.alert('Error', 'Could not save business profile. Please try again.');
     } finally {
       setSavingBusiness(false);
     }
   };
 
+  // ── Sign out ───────────────────────────────────────────────────────────────
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
@@ -91,7 +211,7 @@ export default function ProfileScreen() {
             reset();
             router.replace('/auth/login');
           } catch {
-            Alert.alert('Error', 'Sign out failed.');
+            Alert.alert('Error', 'Sign out failed. Please try again.');
           } finally {
             setSigningOut(false);
           }
@@ -100,17 +220,19 @@ export default function ProfileScreen() {
     ]);
   };
 
-  // Build display rows from profileData
-  const profileRows = Object.entries(profileData)
-    .filter(([, v]) => v !== undefined && v !== null && v !== '')
-    .map(([key, value]) => ({
-      key,
-      label: key
-        .replace(/([A-Z])/g, ' $1')
-        .replace(/^./, (s) => s.toUpperCase()),
-      value: Array.isArray(value) ? value.join(', ') : String(value),
-    }));
+  // ── Cancel helpers ─────────────────────────────────────────────────────────
+  const cancelBasicEdit = () => {
+    setName(profile?.name ?? '');
+    setPhone(profile?.phone ?? '');
+    setEditing(false);
+  };
 
+  const cancelBusinessEdit = () => {
+    setBusinessData(profile?.profileData ?? {});
+    setEditingBusiness(false);
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <View style={styles.safe}>
       <ScrollView
@@ -126,14 +248,32 @@ export default function ProfileScreen() {
       >
         {/* Gradient header */}
         <View style={[styles.headerBg, { backgroundColor: roleColor }]}>
-          {/* Avatar */}
-          <View style={styles.avatarRing}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {profile?.name?.charAt(0).toUpperCase() ?? '?'}
-              </Text>
+          {/* Avatar with camera overlay */}
+          <TouchableOpacity
+            style={styles.avatarRing}
+            onPress={handleChangePhoto}
+            activeOpacity={0.85}
+            disabled={uploadingPhoto}
+          >
+            {profile?.photoUrl ? (
+              <Image source={{ uri: profile.photoUrl }} style={styles.avatarImage} />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {profile?.name?.charAt(0).toUpperCase() ?? '?'}
+                </Text>
+              </View>
+            )}
+
+            {/* Camera badge */}
+            <View style={styles.cameraBadge}>
+              {uploadingPhoto ? (
+                <ActivityIndicator size={12} color={Colors.white} />
+              ) : (
+                <Camera size={14} color={Colors.white} />
+              )}
             </View>
-          </View>
+          </TouchableOpacity>
 
           <Text style={styles.partnerName}>{profile?.name ?? 'Partner'}</Text>
 
@@ -146,7 +286,7 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.content}>
-          {/* Edit / Save toggle */}
+          {/* ── Edit Basic Info toggle ── */}
           {!editing ? (
             <TouchableOpacity style={styles.editBtn} onPress={() => setEditing(true)}>
               <Edit2 color={Colors.primary} size={16} />
@@ -176,14 +316,7 @@ export default function ProfileScreen() {
               />
 
               <View style={styles.editActions}>
-                <TouchableOpacity
-                  style={styles.cancelBtn}
-                  onPress={() => {
-                    setName(profile?.name ?? '');
-                    setPhone(profile?.phone ?? '');
-                    setEditing(false);
-                  }}
-                >
+                <TouchableOpacity style={styles.cancelBtn} onPress={cancelBasicEdit}>
                   <Text style={styles.cancelText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -201,88 +334,99 @@ export default function ProfileScreen() {
             </View>
           )}
 
-          {/* Partner details section */}
+          {/* ── Contact Info ── */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Contact Info</Text>
             <ProfileRow label="Email" value={profile?.email ?? ''} Icon={Mail} />
             <ProfileRow label="Phone" value={profile?.phone ?? ''} Icon={Phone} />
           </View>
 
-          {/* Business Profile section */}
-          {Object.keys(profile?.profileData || {}).length > 0 && (
-            <View style={styles.section}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm }}>
-                <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Business Profile</Text>
-                {!editingBusiness && (
-                  <TouchableOpacity onPress={() => {
+          {/* ── Business Profile ── */}
+          <View style={styles.section}>
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: Spacing.sm,
+              }}
+            >
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Business Profile</Text>
+              {!editingBusiness && (
+                <TouchableOpacity
+                  onPress={() => {
                     setBusinessData(profile?.profileData ?? {});
                     setEditingBusiness(true);
-                  }}>
-                    <Edit2 color={Colors.primary} size={16} />
-                  </TouchableOpacity>
-                )}
-              </View>
+                  }}
+                >
+                  <Edit2 color={Colors.primary} size={16} />
+                </TouchableOpacity>
+              )}
+            </View>
 
-              {editingBusiness ? (
-                <View style={{ marginTop: Spacing.sm }}>
-                  {Object.entries(businessData).map(([key, value]) => (
+            {editingBusiness ? (
+              <View style={{ marginTop: Spacing.sm }}>
+                {Object.keys(businessData).length === 0 ? (
+                  <Text
+                    style={{ color: Colors.textMuted, fontSize: FontSize.sm, paddingBottom: Spacing.sm }}
+                  >
+                    No fields to edit. Your business profile is empty.
+                  </Text>
+                ) : (
+                  Object.entries(businessData).map(([key, value]) => (
                     <View key={key} style={{ marginBottom: Spacing.md }}>
                       <Text style={styles.label}>
                         {key.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase())}
                       </Text>
                       <TextInput
                         style={styles.input}
-                        value={Array.isArray(value) ? value.join(', ') : String(value || '')}
+                        value={Array.isArray(value) ? value.join(', ') : String(value ?? '')}
                         onChangeText={(text) => {
                           setBusinessData((prev) => ({
                             ...prev,
-                            [key]: Array.isArray(prev[key]) ? text.split(',').map((s) => s.trim()) : text,
+                            [key]: Array.isArray(prev[key])
+                              ? text.split(',').map((s) => s.trim())
+                              : text,
                           }));
                         }}
                         placeholder={`Enter ${key}`}
                         placeholderTextColor={Colors.textLight}
                       />
                     </View>
-                  ))}
-
-                  <View style={styles.editActions}>
-                    <TouchableOpacity
-                      style={styles.cancelBtn}
-                      onPress={() => {
-                        setBusinessData(profile?.profileData ?? {});
-                        setEditingBusiness(false);
-                      }}
-                    >
-                      <Text style={styles.cancelText}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.saveBtn, savingBusiness && { opacity: 0.7 }]}
-                      onPress={handleSaveBusiness}
-                      disabled={savingBusiness}
-                    >
-                      {savingBusiness ? (
-                        <ActivityIndicator color={Colors.white} size="small" />
-                      ) : (
-                        <Text style={styles.saveText}>Save</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
-                profileRows.length > 0 ? (
-                  profileRows.map((row) => (
-                    <ProfileRow key={row.key} label={row.label} value={row.value} Icon={Clipboard} />
                   ))
-                ) : (
-                  <Text style={{ color: Colors.textMuted, fontSize: FontSize.sm, paddingVertical: Spacing.sm }}>
-                    No business profile data available.
-                  </Text>
-                )
-              )}
-            </View>
-          )}
+                )}
 
-          {/* Account section */}
+                <View style={styles.editActions}>
+                  <TouchableOpacity style={styles.cancelBtn} onPress={cancelBusinessEdit}>
+                    <Text style={styles.cancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.saveBtn, savingBusiness && { opacity: 0.7 }]}
+                    onPress={handleSaveBusiness}
+                    disabled={savingBusiness}
+                  >
+                    {savingBusiness ? (
+                      <ActivityIndicator color={Colors.white} size="small" />
+                    ) : (
+                      <Text style={styles.saveText}>Save</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : hasBusinessData ? (
+              profileRows.map((row) => (
+                <ProfileRow key={row.key} label={row.label} value={row.value} Icon={Clipboard} />
+              ))
+            ) : (
+              <Text
+                style={{ color: Colors.textMuted, fontSize: FontSize.sm, paddingVertical: Spacing.sm }}
+              >
+                No business profile data yet. Tap the edit icon to add details.
+              </Text>
+            )}
+          </View>
+
+          {/* ── Account ── */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Account</Text>
             <TouchableOpacity style={styles.menuItem}>
@@ -297,17 +441,17 @@ export default function ProfileScreen() {
             </TouchableOpacity>
             <TouchableOpacity style={styles.menuItem}>
               <HelpCircle color={Colors.text} size={18} />
-              <Text style={styles.menuLabel}>Help & Support</Text>
+              <Text style={styles.menuLabel}>Help &amp; Support</Text>
               <ChevronRight color={Colors.textLight} size={20} />
             </TouchableOpacity>
             <TouchableOpacity style={styles.menuItem}>
               <FileText color={Colors.text} size={18} />
-              <Text style={styles.menuLabel}>Terms & Privacy</Text>
+              <Text style={styles.menuLabel}>Terms &amp; Privacy</Text>
               <ChevronRight color={Colors.textLight} size={20} />
             </TouchableOpacity>
           </View>
 
-          {/* Sign out */}
+          {/* ── Sign Out ── */}
           <TouchableOpacity
             style={[styles.signOutBtn, signingOut && { opacity: 0.7 }]}
             onPress={handleSignOut}
@@ -379,6 +523,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
   },
+  avatarImage: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+  },
   avatar: {
     width: 72,
     height: 72,
@@ -391,6 +540,19 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xxl,
     fontWeight: '800',
     color: Colors.primary,
+  },
+  cameraBadge: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.white,
   },
   partnerName: {
     fontSize: FontSize.xl,

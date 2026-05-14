@@ -46,9 +46,10 @@ export async function getUsers(): Promise<User[]> {
 
 export async function getPartners(): Promise<Partner[]> {
   try {
+    // Fetch partners and their listing count in one query
     const { data, error } = await supabaseAdmin
       .from('users')
-      .select('*')
+      .select('*, listings(count)')
       .in('role', ['rental', 'guide', 'hotel']);
 
     if (error) throw error;
@@ -58,7 +59,7 @@ export async function getPartners(): Promise<Partner[]> {
       name: row.name || 'Unknown Partner',
       businessName: row.profile_data?.shopName || row.name || 'N/A',
       location: row.profile_data?.location || 'Unknown Location',
-      listings: 0,
+      listings: (row.listings as any)?.[0]?.count ?? 0,
       joinedDate: formatDate(row.created_at),
       status: row.is_approved ? 'verified' : 'pending',
       avatarInitials: row.name ? row.name.substring(0, 2).toUpperCase() : 'P',
@@ -108,7 +109,7 @@ export async function getListings(): Promise<Listing[]> {
     // 1. Fetch listings
     const { data: listingsData, error: listingsError } = await supabaseAdmin
       .from('listings')
-      .select('*');
+      .select('*, partner:users!listings_partner_id_fkey(name)');
 
     if (listingsError) throw listingsError;
 
@@ -136,7 +137,7 @@ export async function getListings(): Promise<Listing[]> {
       return {
         id: row.id,
         name: row.title || 'Untitled Listing',
-        partner: row.partner_id || 'Unknown Partner',
+        partner: row.partner?.name || row.partner_id || 'Unknown Partner',
         category: row.type || 'Other',
         location: row.location || 'Unknown Location',
         price: row.price ? `₹${row.price}` : 'N/A',
@@ -158,14 +159,14 @@ export async function getBookings(): Promise<Booking[]> {
   try {
     const { data, error } = await supabaseAdmin
       .from('bookings')
-      .select('*');
+      .select('*, partner:users!bookings_partner_id_fkey(name), client:users!bookings_user_id_fkey(name)');
 
     if (error) throw error;
 
     return (data || []).map((row) => ({
       id: row.id,
-      client: row.guest_name || row.user_id || 'Unknown Client',
-      partner: row.partner_id || 'Unknown Partner',
+      client: row.client?.name || row.guest_name || row.user_name || row.user_id || 'Unknown Client',
+      partner: row.partner?.name || row.partner_id || 'Unknown Partner',
       listing: row.item_name || row.listing_id || 'Unknown Listing',
       dateTime: formatDateTime(row.created_at),
       guests: row.days || 1,
@@ -189,9 +190,12 @@ export async function getDashboardStats() {
 
   const totalUsers = users.length;
   const totalPartners = partners.length;
+  const verifiedPartners = partners.filter((p) => p.status === 'verified').length;
+  const pendingPartners = partners.filter((p) => p.status === 'pending').length;
   const activeListings = listings.filter((l) => l.status === 'active').length;
   const pendingBookings = bookings.filter((b) => b.status === 'pending').length;
 
+  // Revenue: sum numeric amounts (stored as '₹1234' strings) from paid bookings
   const totalRevenue = bookings
     .filter((b) => b.status === 'completed' || b.status === 'confirmed')
     .reduce((sum, b) => {
@@ -199,6 +203,7 @@ export async function getDashboardStats() {
       return sum + (parseFloat(amountStr) || 0);
     }, 0);
 
+  // Bookings by type
   const typeCounts: Record<string, number> = {};
   const typeColors: Record<string, string> = {
     guide: 'bg-green-500',
@@ -224,9 +229,30 @@ export async function getDashboardStats() {
     bookingsByType.push({ name: 'No Bookings Yet', percentage: 100, color: 'bg-gray-300' });
   }
 
-  const bookingsByLocation: ProgressItem[] = [
-    { name: 'All Locations', percentage: 100, color: 'bg-green-500' },
-  ];
+  // Bookings by location — aggregate real city data
+  const locationCounts: Record<string, number> = {};
+  for (const b of bookings) {
+    const rawBooking = b as any;
+    const city = rawBooking.city ? String(rawBooking.city).trim() : null;
+    if (city) {
+      const displayCity = city.charAt(0).toUpperCase() + city.slice(1);
+      locationCounts[displayCity] = (locationCounts[displayCity] || 0) + 1;
+    }
+  }
+
+  const locationColors = ['bg-green-500', 'bg-blue-500', 'bg-purple-500', 'bg-orange-500', 'bg-pink-500'];
+  const bookingsByLocation: ProgressItem[] = Object.entries(locationCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([name, count], i) => ({
+      name,
+      percentage: Math.round((count / totalBookingsCount) * 100),
+      color: locationColors[i % locationColors.length],
+    }));
+
+  if (bookingsByLocation.length === 0) {
+    bookingsByLocation.push({ name: 'No Bookings Yet', percentage: 100, color: 'bg-gray-300' });
+  }
 
   const recentBookings = bookings.slice(0, 5);
 
@@ -234,6 +260,8 @@ export async function getDashboardStats() {
     stats: {
       totalUsers,
       totalPartners,
+      verifiedPartners,
+      pendingPartners,
       activeListings,
       pendingBookings,
       totalRevenue: `₹${totalRevenue.toLocaleString('en-IN')}`,

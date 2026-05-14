@@ -91,18 +91,22 @@ Deno.serve(async (req) => {
       auth.user.email?.split('@')[0] ||
       'Traveler';
 
-    // Check if user already has an active pending request
+    // Check if user already has an active pending request — block both
+    // 'awaiting_guide' (not yet accepted) and 'awaiting_payment' (accepted, unpaid).
     const { data: existingPending } = await serviceClient
       .from('bookings')
-      .select('id')
+      .select('id, pre_payment_status')
       .eq('user_id', auth.user.id)
       .eq('status', 'pending')
-      .eq('pre_payment_status', 'awaiting_guide')
+      .in('pre_payment_status', ['awaiting_guide', 'awaiting_payment'])
       .limit(1)
       .maybeSingle();
 
     if (existingPending) {
-      throw new HttpError(400, 'You already have an active booking request. Please cancel it or wait for it to expire before placing a new one.');
+      const stateLabel = existingPending.pre_payment_status === 'awaiting_payment'
+        ? 'A guide has accepted your request and is awaiting payment. Please complete or cancel it first.'
+        : 'You already have an active booking request. Please cancel it or wait for it to expire before placing a new one.';
+      throw new HttpError(400, stateLabel);
     }
 
     const bookingRow: Record<string, unknown> = {

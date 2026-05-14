@@ -10,7 +10,7 @@ export default function PartnerDetailClient({ partner }: { partner: any }) {
   const router = useRouter();
   const [approvalStatus, setApprovalStatus] = useState(partner.status);
   const [isPending, startTransition] = useTransition();
-  
+
   const handleApprove = () => {
     startTransition(async () => {
       const res = await approvePartner(partner.id);
@@ -36,7 +36,7 @@ export default function PartnerDetailClient({ partner }: { partner: any }) {
   };
 
   const profileData = partner.profileData || {};
-  
+
   const knownKeys = ['avatar', 'emergencyContact', 'gender', 'jobType', 'category', 'experience', 'city', 'zone', 'address', 'aadharNumber', 'panNumber', 'bankAccount', 'ifscCode', 'bankNumber', 'upiId'];
   const dynamicRows = Object.entries(profileData).filter(([k, v]) => !knownKeys.includes(k) && v !== undefined && v !== null && v !== '');
 
@@ -53,7 +53,7 @@ export default function PartnerDetailClient({ partner }: { partner: any }) {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex items-start justify-between relative overflow-hidden">
         {/* Left decoration line */}
         <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-16 bg-red-500 rounded-r-full"></div>
-        
+
         <div className="flex items-center gap-6 pl-4">
           <div className="w-24 h-24 rounded-full bg-gray-200 border-4 border-white shadow-md overflow-hidden flex items-center justify-center relative">
             {profileData.avatar || partner.photoUrl ? (
@@ -79,13 +79,12 @@ export default function PartnerDetailClient({ partner }: { partner: any }) {
             </p>
           </div>
         </div>
-        
+
         <div className="flex flex-col items-end gap-4">
-          <span className={`px-3 py-1.5 text-xs font-bold rounded-lg ${
-            approvalStatus === 'verified' ? 'bg-green-50 text-green-600 border border-green-200' :
-            approvalStatus === 'pending' ? 'bg-red-50 text-red-600 border border-red-200' :
-            'bg-yellow-50 text-yellow-600 border border-yellow-200'
-          }`}>
+          <span className={`px-3 py-1.5 text-xs font-bold rounded-lg ${approvalStatus === 'verified' ? 'bg-green-50 text-green-600 border border-green-200' :
+              approvalStatus === 'pending' ? 'bg-red-50 text-red-600 border border-red-200' :
+                'bg-yellow-50 text-yellow-600 border border-yellow-200'
+            }`}>
             {approvalStatus === 'verified' ? 'Verified' : approvalStatus === 'pending' ? 'KYC pending' : 'Suspended'}
           </span>
           <div className="relative mt-auto">
@@ -114,14 +113,14 @@ export default function PartnerDetailClient({ partner }: { partner: any }) {
           <InputField label="Enter mobile number" value={partner.phone || 'N/A'} icon={<Edit2 className="w-4 h-4 text-gray-400" />} />
           <InputField label="Enter Email" value={partner.email || 'N/A'} icon={<Edit2 className="w-4 h-4 text-gray-400" />} />
           <InputField label="Emergency contact number" value={profileData.emergencyContact || 'N/A'} icon={<Edit2 className="w-4 h-4 text-gray-400" />} />
-          
-    
-          
+
+
+
           <InputField label="Work Experience" value={profileData.experience || 'N/A'} />
           <SelectField label="City" value={profileData.city || 'N/A'} />
           <SelectField label="Zone" value={profileData.zone || 'N/A'} />
         </div>
-        
+
         <div className="mt-6">
           <TextAreaField label="Address" value={profileData.address || 'N/A'} />
         </div>
@@ -152,11 +151,11 @@ export default function PartnerDetailClient({ partner }: { partner: any }) {
       {/* KYC details & verification */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-6">
         <h2 className="text-lg font-bold text-gray-900">KYC details & verification</h2>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <InputField label="Adhaar number" value={profileData.aadharNumber || 'N/A'} icon={<Edit2 className="w-4 h-4 text-gray-400" />} />
           <InputField label="PAN number" value={profileData.panNumber || 'N/A'} icon={<Edit2 className="w-4 h-4 text-gray-400" />} />
-          
+
           {/* Uploaded Documents */}
           {partner.documents && partner.documents.length > 0 ? (
             partner.documents.map((docUrl: string, index: number) => (
@@ -189,20 +188,20 @@ export default function PartnerDetailClient({ partner }: { partner: any }) {
             </div>
           )}
 
-          {/* KYC Video URL */}
+          {/* Demo Video URL */}
           {partner.kycVideoUrl ? (
             <div className="col-span-1 md:col-span-2 border border-gray-200 rounded-xl p-4 flex flex-col justify-between relative mt-4">
-               <div className="flex justify-between items-start mb-4">
-                  <span className="text-sm font-medium text-gray-700">KYC Video Verification</span>
-                  <CheckCircle className="w-5 h-5 text-green-500" />
-                </div>
-                <div className="w-full max-w-md mx-auto rounded-lg overflow-hidden bg-black aspect-video flex-shrink-0">
-                  <video src={partner.kycVideoUrl} controls className="w-full h-full object-contain" preload="metadata" />
-                </div>
+              <div className="flex justify-between items-start mb-4">
+                <span className="text-sm font-medium text-gray-700">Demo Video Verification</span>
+                <CheckCircle className="w-5 h-5 text-green-500" />
+              </div>
+              <div className="w-full max-w-md mx-auto rounded-lg overflow-hidden bg-black aspect-video flex-shrink-0">
+                <video src={partner.kycVideoUrl} controls className="w-full h-full object-contain" preload="metadata" />
+              </div>
             </div>
           ) : (
             <div className="col-span-1 md:col-span-2 border border-gray-200 rounded-xl p-4 flex items-center justify-center min-h-[8rem] text-gray-500 text-sm mt-4">
-              No KYC video uploaded
+              No Demo Video uploaded
             </div>
           )}
         </div>
@@ -229,13 +228,13 @@ export default function PartnerDetailClient({ partner }: { partner: any }) {
 
       {/* Action Buttons */}
       <div className="flex items-center justify-center gap-4 pt-4 pb-8">
-        <button 
+        <button
           onClick={handleReject}
           className="px-8 py-3 text-red-600 font-semibold bg-white border border-red-200 rounded-lg shadow-sm hover:bg-red-50 transition-colors w-48 text-center"
         >
           Reject
         </button>
-        <button 
+        <button
           onClick={handleApprove}
           className="px-8 py-3 text-white font-semibold bg-red-600 rounded-lg shadow-sm hover:bg-red-700 transition-colors w-48 text-center"
         >
@@ -252,10 +251,10 @@ function InputField({ label, value, icon }: { label: string; value: string; icon
     <div className="relative">
       <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-400 z-10">{label}</label>
       <div className="relative flex items-center border border-gray-200 rounded-lg bg-white overflow-hidden focus-within:border-gray-400 focus-within:ring-1 focus-within:ring-gray-400 transition-colors">
-        <input 
-          type="text" 
-          value={value} 
-          readOnly 
+        <input
+          type="text"
+          value={value}
+          readOnly
           className="w-full px-4 py-3 text-sm text-gray-800 outline-none bg-transparent"
         />
         {icon && <div className="pr-4">{icon}</div>}
@@ -269,10 +268,10 @@ function SelectField({ label, value }: { label: string; value: string }) {
     <div className="relative">
       <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-400 z-10">{label}</label>
       <div className="relative flex items-center border border-gray-200 rounded-lg bg-white overflow-hidden focus-within:border-gray-400 focus-within:ring-1 focus-within:ring-gray-400 transition-colors">
-        <input 
-          type="text" 
-          value={value} 
-          readOnly 
+        <input
+          type="text"
+          value={value}
+          readOnly
           className="w-full px-4 py-3 text-sm text-gray-800 outline-none bg-transparent"
         />
         <ChevronDown className="w-4 h-4 text-gray-400 absolute right-4 pointer-events-none" />
@@ -285,9 +284,9 @@ function TextAreaField({ label, value }: { label: string; value: string }) {
   return (
     <div className="relative">
       <label className="absolute -top-2 left-3 bg-white px-1 text-xs text-gray-400 z-10">{label}</label>
-      <textarea 
-        value={value} 
-        readOnly 
+      <textarea
+        value={value}
+        readOnly
         rows={3}
         className="w-full px-4 py-3 text-sm text-gray-800 border border-gray-200 rounded-lg outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 transition-colors resize-none"
       />

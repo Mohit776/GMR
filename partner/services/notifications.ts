@@ -30,8 +30,7 @@ export async function initNotifications(userId: string): Promise<() => void> {
     console.warn('[FCM] Failed to request Expo notification permissions:', err);
   }
 
-  // 3. Request FCM permissions via Firebase. Android token registration should
-  // still continue if this API is unavailable or returns a non-granted state.
+  // 3. Request FCM permissions via Firebase.
   try {
     const authStatus = await messaging().requestPermission();
     const enabled =
@@ -51,9 +50,8 @@ export async function initNotifications(userId: string): Promise<() => void> {
       await messaging().registerDeviceForRemoteMessages();
     }
 
-    const token = await messaging().getToken();
-    console.log('[FCM] Got token:', token ? token.substring(0, 15) + '...' : 'null');
-    
+    // 5. Retry token fetch — SERVICE_NOT_AVAILABLE is a transient GPS connectivity error
+    const token = await getTokenWithRetry();
     if (token) {
       const { error } = await supabase.rpc('register_fcm_token', { p_token: token });
       if (error) {
@@ -76,7 +74,7 @@ export async function initNotifications(userId: string): Promise<() => void> {
 
   // Foreground FCM messages — schedule a local notification so it shows as a heads-up banner
   const unsubscribeForeground = messaging().onMessage(async (remoteMessage) => {
-    console.log('[FCM] ▶ Foreground message:', JSON.stringify(remoteMessage.data));
+    console.log('[FCM] Foreground message:', JSON.stringify(remoteMessage.data));
     const title =
       (remoteMessage.data?.title as string) ||
       remoteMessage.notification?.title ||
@@ -102,6 +100,35 @@ export async function initNotifications(userId: string): Promise<() => void> {
     unsubscribeRefresh();
     unsubscribeForeground();
   };
+}
+
+/**
+ * Retries messaging().getToken() up to `maxAttempts` times with exponential backoff.
+ * SERVICE_NOT_AVAILABLE is a transient Google Play Services error that usually
+ * resolves on its own within a few seconds.
+ */
+async function getTokenWithRetry(maxAttempts = 3): Promise<string | null> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const token = await messaging().getToken();
+      console.log(`[FCM] Got token (attempt ${attempt}):`, token ? token.substring(0, 15) + '...' : 'null');
+      return token;
+    } catch (err: any) {
+      const isRetryable =
+        err?.message?.includes('SERVICE_NOT_AVAILABLE') ||
+        err?.message?.includes('NETWORK_ERROR') ||
+        err?.message?.includes('TIMEOUT');
+
+      if (isRetryable && attempt < maxAttempts) {
+        const delay = 2000 * attempt; // 2s, then 4s
+        console.warn(`[FCM] getToken attempt ${attempt} failed (transient), retrying in ${delay}ms...`);
+        await new Promise((r) => setTimeout(r, delay));
+      } else {
+        throw err;
+      }
+    }
+  }
+  return null;
 }
 
 export async function handleNotificationTap(

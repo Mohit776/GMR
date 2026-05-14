@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View, StyleSheet, ScrollView, TouchableOpacity, StatusBar, TextInput,
   Modal, Alert, ActivityIndicator, KeyboardAvoidingView, Platform,
@@ -17,7 +17,7 @@ async function invokeFunction<T>(name: string, body: unknown): Promise<T> {
     let message = result.error.message || `${name} failed.`;
     const context = (result.error as any).context;
     if (context && typeof context.json === 'function') {
-      try { const b = await context.json(); message = b?.error || b?.message || message; } catch {}
+      try { const b = await context.json(); message = b?.error || b?.message || message; } catch { }
     }
     throw new Error(message);
   }
@@ -63,6 +63,8 @@ export default function CheckoutScreen() {
     d.setDate(d.getDate() + 1); d.setHours(10); return d;
   });
   const [picker, setPicker] = useState<PickerState>({ visible: false, mode: 'date', target: 'start' });
+  const [hours, setHours] = useState(3);
+  const [maxBookingHours, setMaxBookingHours] = useState(6);
   const [coupon, setCoupon] = useState('');
   const [discountApplied, setDiscountApplied] = useState(false);
 
@@ -74,17 +76,41 @@ export default function CheckoutScreen() {
   // ── Request state ─────────────────────────────────────────────────────────────
   const [requesting, setRequesting] = useState(false);
 
+  // ── Service Fee ─────────────────────────────────────────────────────────────
+  const [feePercent, setFeePercent] = useState(5);
+  useEffect(() => {
+    supabase.from('app_settings').select('service_fee_percentage').eq('id', 1).single().then(({ data }) => {
+      if (data && data.service_fee_percentage != null) {
+        setFeePercent(Number(data.service_fee_percentage));
+      }
+    });
+  }, []);
+
+  // ── Fetch guide's max booking hours ──────────────────────────────────────────
+  useEffect(() => {
+    if (params.bookingType === 'guide' && params.partnerId) {
+      (async () => {
+        try {
+          const { data } = await supabase
+            .from('users')
+            .select('profile_data')
+            .eq('id', params.partnerId)
+            .single();
+          const maxH = data?.profile_data?.max_booking_hours;
+          if (maxH && Number(maxH) > 0) setMaxBookingHours(Number(maxH));
+        } catch { /* silently use default */ }
+      })();
+    }
+  }, [params.partnerId, params.bookingType]);
+
   // ── Pricing ──────────────────────────────────────────────────────────────────
   const quantity = useMemo(() => {
-    if (isHourly) {
-      const hrs = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 36e5));
-      return hrs;
-    }
+    if (isHourly) return hours;
     return diffDays(startDate, endDate);
-  }, [startDate, endDate, isHourly]);
+  }, [startDate, endDate, isHourly, hours]);
 
   const subtotal = unitPrice * quantity;
-  const serviceFee = Math.round(subtotal * 0.05);
+  const serviceFee = Math.round(subtotal * (feePercent / 100));
   const discountAmount = discountApplied ? Math.round(subtotal * 0.1) : 0; // 10% off for demo
   const total = subtotal + serviceFee - discountAmount;
 
@@ -135,7 +161,10 @@ export default function CheckoutScreen() {
           coupon: discountApplied ? coupon.trim().toUpperCase() : undefined,
           discountAmount: discountApplied ? discountAmount : undefined,
           startDate: startDate.toISOString(),
-          endDate: endDate.toISOString(),
+          endDate: isHourly
+            ? new Date(startDate.getTime() + hours * 3600000).toISOString()
+            : endDate.toISOString(),
+          hours: isHourly ? hours : undefined,
         }
       );
 
@@ -173,6 +202,16 @@ export default function CheckoutScreen() {
   };
 
   const handleProceed = () => {
+    if (isHourly) {
+      if (hours < 3) {
+        Alert.alert('Minimum 3 Hours', 'Guide bookings require a minimum of 3 hours.');
+        return;
+      }
+      if (hours > maxBookingHours) {
+        Alert.alert('Exceeds Maximum', `This guide allows a maximum of ${maxBookingHours} hours per booking.`);
+        return;
+      }
+    }
     const phone = user?.phoneNumber || user?.user_metadata?.phone || '';
     if (!phone || phone.trim().length < 10) {
       setPhoneInput(phone || '');
@@ -264,24 +303,56 @@ export default function CheckoutScreen() {
 
           <View style={s.separator} />
 
-          {/* End */}
-          <Text style={s.dateLabel}>End</Text>
-          <View style={s.dateRow}>
-            <TouchableOpacity style={s.dateChip} onPress={() => openPicker('end', 'date')} activeOpacity={0.7}>
-              <Ionicons name="calendar-outline" size={16} color={C.primary} />
-              <Text style={s.dateChipText}>{fmt(endDate)}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={s.dateChip} onPress={() => openPicker('end', 'time')} activeOpacity={0.7}>
-              <Ionicons name="time-outline" size={16} color={C.blue} />
-              <Text style={s.dateChipText}>{fmtTime(endDate)}</Text>
-            </TouchableOpacity>
-          </View>
+          {isHourly ? (
+            <>
+              <Text style={s.dateLabel}>Duration (hours)</Text>
+              <View style={s.hoursRow}>
+                <TouchableOpacity
+                  style={[s.hoursBtn, hours <= 3 && s.hoursBtnDisabled]}
+                  onPress={() => setHours(h => Math.max(3, h - 1))}
+                  disabled={hours <= 3}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="remove" size={22} color={C.primary} />
+                </TouchableOpacity>
+                <View style={s.hoursDisplay}>
+                  <Text style={s.hoursValue}>{hours}</Text>
+                  <Text style={s.hoursUnit}>hours</Text>
+                </View>
+                <TouchableOpacity
+                  style={[s.hoursBtn, hours >= maxBookingHours && s.hoursBtnDisabled]}
+                  onPress={() => setHours(h => Math.min(maxBookingHours, h + 1))}
+                  disabled={hours >= maxBookingHours}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="add" size={22} color={C.primary} />
+                </TouchableOpacity>
+              </View>
+              <Text style={s.hoursHint}>Min 3 hrs · Max {maxBookingHours} hrs</Text>
+            </>
+          ) : (
+            <>
+              <Text style={s.dateLabel}>End</Text>
+              <View style={s.dateRow}>
+                <TouchableOpacity style={s.dateChip} onPress={() => openPicker('end', 'date')} activeOpacity={0.7}>
+                  <Ionicons name="calendar-outline" size={16} color={C.primary} />
+                  <Text style={s.dateChipText}>{fmt(endDate)}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.dateChip} onPress={() => openPicker('end', 'time')} activeOpacity={0.7}>
+                  <Ionicons name="time-outline" size={16} color={C.blue} />
+                  <Text style={s.dateChipText}>{fmtTime(endDate)}</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
 
           {/* Duration badge */}
           <View style={s.durationBadge}>
             <Ionicons name="timer-outline" size={16} color={C.teal} />
             <Text style={s.durationText}>
-              Duration: <Text style={{ fontWeight: '700', color: C.teal }}>{quantity} {unitLabel}{quantity > 1 ? 's' : ''}</Text>
+              Duration: <Text style={{ fontWeight: '700', color: C.teal }}>
+                {isHourly ? `${hours} hour${hours !== 1 ? 's' : ''}` : `${quantity} ${unitLabel}${quantity > 1 ? 's' : ''}`}
+              </Text>
             </Text>
           </View>
         </View>
@@ -299,8 +370,8 @@ export default function CheckoutScreen() {
               onChangeText={setCoupon}
               autoCapitalize="characters"
             />
-            <TouchableOpacity 
-              style={[s.applyBtn, !coupon.trim() && { opacity: 0.5 }]} 
+            <TouchableOpacity
+              style={[s.applyBtn, !coupon.trim() && { opacity: 0.5 }]}
               disabled={!coupon.trim()}
               onPress={() => setDiscountApplied(true)}
             >
@@ -319,7 +390,7 @@ export default function CheckoutScreen() {
         <Text style={s.sectionLabel}>Price Details</Text>
         <View style={s.card}>
           <Row label={`₹${unitPrice.toLocaleString('en-IN')} × ${quantity} ${unitLabel}${quantity > 1 ? 's' : ''}`} value={`₹${subtotal.toLocaleString('en-IN')}`} />
-          <Row label="Service fee (5%)" value={`₹${serviceFee.toLocaleString('en-IN')}`} />
+          <Row label={`Service fee (${feePercent}%)`} value={`₹${serviceFee.toLocaleString('en-IN')}`} />
           {discountApplied && (
             <Row label="Discount" value={`-₹${discountAmount.toLocaleString('en-IN')}`} isDiscount />
           )}
@@ -664,4 +735,20 @@ const s = StyleSheet.create({
     shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
   },
   ctaBtnText: { color: C.white, fontSize: 15, fontWeight: '800' },
+
+  // Hours stepper
+  hoursRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    marginVertical: 8,
+  },
+  hoursBtn: {
+    width: 44, height: 44, borderRadius: 12, backgroundColor: '#ECFDF5',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: '#BBF7D0',
+  },
+  hoursBtnDisabled: { opacity: 0.35 },
+  hoursDisplay: { flex: 1, alignItems: 'center' },
+  hoursValue: { fontSize: 32, fontWeight: '800', color: C.dark, lineHeight: 38 },
+  hoursUnit: { fontSize: 13, color: C.gray, fontWeight: '500' },
+  hoursHint: { fontSize: 12, color: C.gray, fontWeight: '500', textAlign: 'center', marginTop: 4 },
 });
