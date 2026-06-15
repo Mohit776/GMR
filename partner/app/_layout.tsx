@@ -11,7 +11,7 @@ import { NetworkBanner } from '../components/NetworkBanner';
 import '../firebaseMessaging';
 
 export default function RootLayout() {
-  const { user, profile, isInitialized, isProfileLoading, setUser, setProfile, setInitialized, setProfileLoading } =
+  const { user, profile, isInitialized, isProfileLoading, isAdmin, adminInitialized, setUser, setProfile, setInitialized, setProfileLoading } =
     useAuthStore();
   const userUid = user?.uid;
 
@@ -144,7 +144,8 @@ export default function RootLayout() {
   useEffect(() => {
     // Don't make routing decisions while auth is uninitialised or profile is loading
     if (!isInitialized || !navigationState?.key) return;
-    if (isProfileLoading) return; // Wait for profile fetch to complete
+    if (isProfileLoading) return;
+    if (!adminInitialized) return; // Wait for isAdmin to be restored from storage
 
     const routeSegments = (segments ?? []) as string[];
     const currentPath = '/' + routeSegments.join('/');
@@ -166,9 +167,15 @@ export default function RootLayout() {
     const hasPartnerRole = !!profile?.role && partnerRoles.includes(profile.role);
     const isPartnerReady = !!profile?.isOnboarded && hasPartnerRole;
 
+    const inAdminGroup = currentGroup === '(admin)';
+
     let target: string | null = null;
 
-    if (!userUid) {
+    if (isAdmin) {
+      if (!inAdminGroup) {
+        target = '/(admin)/dashboard';
+      }
+    } else if (!userUid) {
       // Not logged in: force to login if not already in auth/onboarding
       if (!inAuthGroup && !inOnboardingGroup) {
         target = '/auth/login';
@@ -195,12 +202,12 @@ export default function RootLayout() {
         router.replace(target as any);
       }, 0);
     }
-  }, [isInitialized, isProfileLoading, navigationState?.key, userUid, profile?.isOnboarded, profile?.role, segments]);
+  }, [isInitialized, isProfileLoading, adminInitialized, isAdmin, navigationState?.key, userUid, profile?.isOnboarded, profile?.role, segments]);
 
   // Reset redirect tracking only when auth state changes (not on tab switches)
   useEffect(() => {
     lastRedirect.current = null;
-  }, [userUid, profile?.isOnboarded, profile?.role]);
+  }, [userUid, profile?.isOnboarded, profile?.role, isAdmin]);
 
   useEffect(() => {
     if (!userUid || !isInitialized) return;

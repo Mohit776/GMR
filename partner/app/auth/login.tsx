@@ -27,13 +27,23 @@ export default function LoginScreen() {
   const [focusedField, setFocusedField] = useState<string | null>(null);
 
   const passwordRef = useRef<TextInput>(null);
-  const { setUser, setProfile } = useAuthStore();
+  const { setUser, setProfile, setIsAdmin } = useAuthStore();
+
+  const ADMIN_EMAIL = 'admin@gmr.com';
+  const ADMIN_PASSWORD = 'admin123';
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
       Alert.alert('Missing fields', 'Please enter your email and password.');
       return;
     }
+
+    if (email.trim().toLowerCase() === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+      setIsAdmin(true);
+      router.replace('/(admin)/dashboard' as any);
+      return;
+    }
+
     setLoading(true);
     try {
       const user = await signInUser(email.trim(), password);
