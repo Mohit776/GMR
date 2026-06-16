@@ -501,12 +501,13 @@ export default function HotelDetailScreen() {
                     pricePerUnit: String(hotel.pricePerNight),
                     partnerId: hotel.id,
                     unitLabel: 'night',
+                    guideCity: hotel.location || '',
                   },
                 });
               }
             }}
           >
-            <Text style={styles.bookButtonText}>Reserve</Text>
+            <Text style={styles.bookButtonText}>Request Booking</Text>
           </TouchableOpacity>
         </View>
       </View>

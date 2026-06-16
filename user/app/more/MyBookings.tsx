@@ -115,7 +115,8 @@ const STATUS_CONFIG: Record<StatusType, { color: string; bg: string; icon: keyof
 
 const PRE_PAYMENT_CONFIG: Record<string, { color: string; bg: string; label: string }> = {
   awaiting_guide: { color: COLORS.orange, bg: COLORS.orangeLight, label: '🔍 Finding Guide…' },
-  awaiting_payment: { color: COLORS.teal, bg: COLORS.tealLight, label: '✅ Guide Accepted – Pay Now' },
+  awaiting_owner: { color: COLORS.orange, bg: COLORS.orangeLight, label: '⏳ Awaiting Owner Confirmation…' },
+  awaiting_payment: { color: COLORS.teal, bg: COLORS.tealLight, label: '✅ Accepted – Pay Now' },
   confirmed: { color: COLORS.primary, bg: COLORS.primaryLight, label: '✔ Confirmed' },
 };
 
@@ -263,6 +264,7 @@ const BookingCard = ({ booking, onCancel }: { booking: Booking; onCancel?: (id: 
   }
 
   const isAwaitingGuide = prePayStatus === 'awaiting_guide';
+  const isAwaitingOwner = prePayStatus === 'awaiting_owner';
   const isAwaitingPayment = prePayStatus === 'awaiting_payment';
   const prePayConfig = prePayStatus ? PRE_PAYMENT_CONFIG[prePayStatus] : null;
 
@@ -296,12 +298,14 @@ const BookingCard = ({ booking, onCancel }: { booking: Booking; onCancel?: (id: 
   // ── Render Actions based on state ──
   const renderActions = () => {
     // Guide-first: Awaiting guide
-    if (isAwaitingGuide) {
+    if (isAwaitingGuide || isAwaitingOwner) {
       return (
         <>
           <View style={styles.guideStatusBox}>
             <ActivityIndicator size="small" color={COLORS.orange} />
-            <Text style={styles.guideStatusText}>Finding guide…</Text>
+            <Text style={styles.guideStatusText}>
+              {isAwaitingOwner ? 'Waiting for owner confirmation…' : 'Finding guide…'}
+            </Text>
           </View>
           <CancelButton
             onPress={() => confirmCancel('Cancel Request', 'Are you sure you want to cancel this booking request?')}

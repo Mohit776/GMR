@@ -79,8 +79,8 @@ export default function AppBar({ transparent = false }: AppBarProps = {}) {
               />
             </View>
             <View>
-              <Text style={styles.eyebrow}>Explore with confidence</Text>
-              <Text style={styles.title}>Guide My <Text style={{ color: '#16A34A' }}>Route</Text></Text>
+              <Text style={[styles.eyebrow, { fontFamily: 'Inter-Bold', fontWeight: 'normal' }]}>Explore with confidence</Text>
+              <Text style={[styles.title, { fontFamily: 'Inter-Bold', fontWeight: 'normal' }]}>Guide My <Text style={{ color: '#16A34A', fontFamily: 'Inter-Bold', fontWeight: 'normal' }}>Route</Text></Text>
             </View>
           </View>
         </TouchableOpacity>

@@ -59,7 +59,7 @@ export default function ActiveBookingBar() {
   useEffect(() => {
     if (!user) return;
     const channel = supabase
-      .channel(`active-booking-bar-${user.id}-${Date.now()}`)
+      .channel(`active-booking-bar-${user.id}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'bookings', filter: `user_id=eq.${user.id}` },
@@ -79,7 +79,7 @@ export default function ActiveBookingBar() {
     );
     if (booking) {
       lastBookingRef.current = booking; // cache before animating in
-      setVisible(true);
+      if (!visible) setVisible(true);
       pulse.start();
       Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 80, friction: 12 }).start();
     } else {

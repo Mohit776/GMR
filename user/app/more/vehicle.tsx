@@ -469,12 +469,13 @@ export default function VehicleDetailScreen() {
                     pricePerUnit: String(vehicle.pricePerDay),
                     partnerId: vehicle.partnerId,
                     unitLabel: 'day',
+                    guideCity: vehicle.location || '',
                   },
                 });
               }
             }}
           >
-            <Text style={styles.bookButtonText}>Book Now</Text>
+            <Text style={styles.bookButtonText}>Request Booking</Text>
           </TouchableOpacity>
         </View>
       </View>

@@ -39,10 +39,10 @@ export default function AdminPartners() {
   const renderPartner = ({ item }: { item: any }) => {
     const isApproved = item.is_onboarded;
     const profile = item.profile_data || {};
-    
+
     let RoleIcon = Briefcase;
     if (item.role === 'hotel') RoleIcon = Briefcase; // Change to hotel icon if available, reusing Briefcase for now
-    
+
     return (
       <TouchableOpacity
         style={styles.card}

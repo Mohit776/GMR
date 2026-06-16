@@ -144,8 +144,7 @@ Deno.serve(async (req) => {
     const { data: guides, error: guidesError } = await serviceClient
       .from('users')
       .select('id, name, city, profile_data')
-      .eq('role', 'guide')
-      .eq('is_approved', true);
+      .eq('role', 'guide');
 
     if (guidesError) throw guidesError;
 

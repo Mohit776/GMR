@@ -16,7 +16,9 @@ export interface BookingRequest {
 }
 
 function mapBookingRequest(row: any): BookingRequest {
-  const b = row.bookings ?? {};
+  // The join may return an object or an array (Supabase returns array for 1:many, object for many:1)
+  const raw = row.bookings;
+  const b = Array.isArray(raw) ? (raw[0] ?? {}) : (raw ?? {});
   return {
     id: row.id,
     bookingId: row.booking_id,
@@ -32,45 +34,77 @@ function mapBookingRequest(row: any): BookingRequest {
 }
 
 export async function getBookingRequests(guideId: string): Promise<BookingRequest[]> {
-  const { data, error } = await supabase
+  console.log('[getBookingRequests] Fetching for guideId:', guideId);
+
+  // Debug: see ALL pending booking_requests in the table (regardless of guide/partner filter)
+  const { data: allRows } = await supabase
     .from('booking_requests')
-    .select('*, bookings(id, city, guest_name, date, amount, price, item_name, note, created_at, pre_payment_status, status)')
-    .eq('guide_id', guideId)
+    .select('id, booking_id, guide_id, partner_id, status')
+    .eq('status', 'pending');
+  console.log('[getBookingRequests] ALL pending booking_requests in DB:', JSON.stringify(allRows));
+
+  // Step 1: fetch pending booking_requests for this guide/partner
+  const { data: reqRows, error: reqError } = await supabase
+    .from('booking_requests')
+    .select('id, booking_id, guide_id, partner_id, status, created_at')
+    .or(`guide_id.eq.${guideId},partner_id.eq.${guideId}`)
     .eq('status', 'pending')
     .order('created_at', { ascending: false });
-  if (error) throw error;
 
-  const now = new Date().getTime();
-  const validRequests = [];
-
-  for (const row of data || []) {
-    const b = row.bookings || {};
-
-    if (b.status !== 'pending' || b.pre_payment_status !== 'awaiting_guide') {
-      continue;
-    }
-
-    if (b.created_at) {
-      const createdAt = new Date(b.created_at).getTime();
-      const diffMins = (now - createdAt) / (1000 * 60);
-      if (diffMins > 30) {
-        // Expired
-        await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', b.id);
-        await supabase.from('booking_requests').update({ status: 'expired' }).eq('booking_id', b.id);
-        continue;
-      }
-    }
-
-    validRequests.push(mapBookingRequest(row));
+  console.log('[getBookingRequests] Filtered rows:', reqRows?.length ?? 0, 'error:', reqError?.message ?? 'none');
+  if (reqRows && reqRows.length > 0) {
+    console.log('[getBookingRequests] First row:', JSON.stringify(reqRows[0]));
   }
 
-  return validRequests;
+  if (reqError) throw reqError;
+  if (!reqRows || reqRows.length === 0) return [];
+
+  // Step 2: fetch the associated bookings
+  const bookingIds = [...new Set(reqRows.map((r: any) => r.booking_id))];
+  const { data: bookingRows, error: bookingError } = await supabase
+    .from('bookings')
+    .select('id, city, guest_name, date, amount, price, item_name, note, created_at, pre_payment_status, status')
+    .in('id', bookingIds);
+
+  if (bookingError) throw bookingError;
+
+  const bookingMap = new Map<string, any>();
+  for (const b of bookingRows || []) {
+    bookingMap.set(b.id, b);
+  }
+
+  // Step 3: merge and map
+  return reqRows.map((row: any) => {
+    const b = bookingMap.get(row.booking_id) || {};
+    return {
+      id: row.id,
+      bookingId: row.booking_id,
+      status: row.status || 'pending',
+      city: b.city || '',
+      guestName: b.guest_name || 'Guest Traveler',
+      date: b.date || (b.created_at ? b.created_at.split('T')[0] : ''),
+      amount: Number(b.amount ?? b.price ?? 0),
+      itemName: b.item_name || 'Trip',
+      note: b.note || '',
+      createdAt: row.created_at || '',
+    };
+  });
 }
+
+// Module-level cache to ensure only one channel exists per guideId at a time.
+const _bookingRequestChannels = new Map<string, ReturnType<typeof supabase.channel>>();
 
 export function listenToBookingRequests(
   guideId: string,
   callback: (requests: BookingRequest[]) => void
 ) {
+  // Remove any existing channel for this guideId before creating a new one.
+  const existing = _bookingRequestChannels.get(guideId);
+  if (existing) {
+    supabase.removeChannel(existing);
+    _bookingRequestChannels.delete(guideId);
+  }
+
   let active = true;
   const refresh = () => {
     getBookingRequests(guideId)
@@ -94,11 +128,24 @@ export function listenToBookingRequests(
       },
       refresh
     )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'booking_requests',
+        filter: `partner_id=eq.${guideId}`,
+      },
+      refresh
+    )
     .subscribe();
+
+  _bookingRequestChannels.set(guideId, channel);
 
   return () => {
     active = false;
     supabase.removeChannel(channel);
+    _bookingRequestChannels.delete(guideId);
   };
 }
 
@@ -175,7 +222,7 @@ export async function getBookings(partnerId: string): Promise<Booking[]> {
 
   for (const row of data || []) {
     let rawStatus = row.status;
-    if (row.status === 'pending' && row.pre_payment_status === 'awaiting_guide' && row.created_at) {
+    if (row.status === 'pending' && ['awaiting_guide', 'awaiting_owner'].includes(row.pre_payment_status) && row.created_at) {
       const createdAt = new Date(row.created_at).getTime();
       const diffMins = (now - createdAt) / (1000 * 60);
       if (diffMins > 30) {

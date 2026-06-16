@@ -57,7 +57,7 @@ const statusConfig: Record<BookingStatus, { color: string; label: string; Icon: 
 export default function BookingsScreen() {
   const { user, refreshProfile, profile } = useAuthStore();
   const userUid = user?.uid;
-  const showRequestsTab = profile?.role !== 'hotel' && profile?.role !== 'rental';
+  const showRequestsTab = true;
   const [activeTab, setActiveTab] = useState<'requests' | 'bookings'>(showRequestsTab ? 'requests' : 'bookings');
 
   useEffect(() => {

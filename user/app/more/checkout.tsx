@@ -13,17 +13,45 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../utils/supabase';
 
 async function invokeFunction<T>(name: string, body: unknown): Promise<T> {
-  const result = await supabase.functions.invoke(name, { body: body as any });
-  if (result.error) {
-    let message = result.error.message || `${name} failed.`;
-    const context = (result.error as any).context;
-    if (context && typeof context.json === 'function') {
-      try { const b = await context.json(); message = b?.error || b?.message || message; } catch { }
+  const attempt = async (forceRefresh = false): Promise<T> => {
+    // Get session to extract the exact access token
+    const { data: sessionData, error: sessionError } = forceRefresh 
+      ? await supabase.auth.refreshSession()
+      : await supabase.auth.getSession();
+      
+    if (sessionError || !sessionData?.session?.access_token) {
+      throw new Error('Your session has expired. Please sign in again.');
     }
-    throw new Error(message);
+    
+    const token = sessionData.session.access_token;
+
+    const result = await supabase.functions.invoke(name, { 
+      body: body as any,
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    
+    if (result.error) {
+      let message = result.error.message || `${name} failed.`;
+      const context = (result.error as any).context;
+      if (context && typeof context.json === 'function') {
+        try { const b = await context.json(); message = b?.error || b?.message || message; } catch { }
+      }
+      throw new Error(message);
+    }
+    if (!result.data) throw new Error(`${name} returned empty response.`);
+    return result.data as T;
+  };
+
+  try {
+    return await attempt(false);
+  } catch (e: any) {
+    // If it's an auth error, try refreshing the session and retry once
+    if (e.message?.toLowerCase().includes('authorization') || e.message?.toLowerCase().includes('token')) {
+      console.log('[invokeFunction] Auth error, refreshing session and retrying...');
+      return await attempt(true);
+    }
+    throw e;
   }
-  if (!result.data) throw new Error(`${name} returned empty response.`);
-  return result.data as T;
 }
 
 // ─── Colors ────────────────────────────────────────────────────────────────────
@@ -149,8 +177,11 @@ export default function CheckoutScreen() {
 
     setRequesting(true);
     try {
+      const isPartnerFlow = ['hotel', 'rental', 'vehicle'].includes(params.bookingType);
+      const functionName = isPartnerFlow ? 'send-partner-booking-request' : 'send-booking-request';
+
       await invokeFunction<{ success: boolean; bookingId: string; notifiedCount: number }>(
-        'send-booking-request',
+        functionName,
         {
           city,
           bookingType: params.bookingType || 'guide',
@@ -169,9 +200,13 @@ export default function CheckoutScreen() {
         }
       );
 
+      const msg = isPartnerFlow
+        ? `The owner has been notified. We'll alert you as soon as they accept your booking.`
+        : `Guides in ${city} have been notified. We'll alert you as soon as one accepts your booking.`;
+
       Alert.alert(
         'Request Sent!',
-        `Guides in ${city} have been notified. We'll alert you as soon as one accepts your booking.`,
+        msg,
         [{ text: 'View Bookings', onPress: () => router.replace('/more/MyBookings') }]
       );
     } catch (e: any) {
@@ -182,24 +217,7 @@ export default function CheckoutScreen() {
   };
 
   const processCheckout = () => {
-    if (params.bookingType === 'hotel' || params.bookingType === 'rental' || params.bookingType === 'vehicle') {
-      router.replace({
-        pathname: '/more/payment',
-        params: {
-          amount: total.toString(),
-          description: `${params.itemName} – ${quantity} ${unitLabel}${quantity > 1 ? 's' : ''}`,
-          bookingType: params.bookingType,
-          itemId: params.itemId || '',
-          itemName: params.itemName || '',
-          days: quantity.toString(),
-          partnerId: params.partnerId || '',
-          coupon: discountApplied ? coupon.trim().toUpperCase() : undefined,
-          discountAmount: discountApplied ? discountAmount.toString() : undefined,
-        }
-      });
-    } else {
-      sendBookingRequest();
-    }
+    sendBookingRequest();
   };
 
   const handleProceed = () => {
@@ -508,7 +526,7 @@ export default function CheckoutScreen() {
             <Ionicons name="paper-plane" size={16} color={C.white} />
           )}
           <Text style={s.ctaBtnText}>
-            {requesting ? 'Sending Request…' : (params.bookingType === 'guide' ? 'Request a Guide' : 'Book')}
+            {requesting ? 'Sending Request…' : (params.bookingType === 'guide' ? 'Request a Guide' : 'Request Booking')}
           </Text>
         </TouchableOpacity>
       </View>
