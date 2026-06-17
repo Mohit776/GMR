@@ -38,16 +38,19 @@ export default function LoginScreen() {
       return;
     }
 
-    if (email.trim().toLowerCase() === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-      setIsAdmin(true);
-      router.replace('/(admin)/dashboard' as any);
-      return;
-    }
 
     setLoading(true);
     try {
       const user = await signInUser(email.trim(), password);
       setUser(user);
+
+      // Check if the signed-in user is the admin by email
+      const isAdminUser = email.trim().toLowerCase() === ADMIN_EMAIL;
+      if (isAdminUser) {
+        setIsAdmin(true);
+        // _layout.tsx will handle redirect to /(admin)/dashboard
+        return;
+      }
 
       // The profile will be picked up by the listener in _layout.tsx,
       // but we fetch it once here for immediate navigation if possible.
@@ -65,7 +68,6 @@ export default function LoginScreen() {
       }
     } catch (err: any) {
       console.error("Login failed:", err);
-      // Supabase errors often have a message property
       const errorMsg = err.message || err.error_description || 'Login failed. Please check your credentials.';
       Alert.alert('Login Failed', errorMsg);
     } finally {

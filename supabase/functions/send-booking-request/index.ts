@@ -202,6 +202,7 @@ Deno.serve(async (req) => {
         userId: guide.id,
         title: `New booking in ${displayCity}!`,
         body: `${userName} is looking for a guide in ${displayCity}. Tap to accept!`,
+        app: 'partner',
         data: {
           type: 'booking_request',
           bookingId,
@@ -216,6 +217,22 @@ Deno.serve(async (req) => {
 
     if (notifiedCount === 0 && eligibleGuides.length > 0) {
       console.warn('[send-booking-request] No push notifications were sent. Check guide FCM tokens and send-push edge function logs.');
+    }
+
+    // Notify all admins
+    const { data: admins } = await serviceClient
+      .from('users')
+      .select('id')
+      .eq('role', 'admin');
+    for (const admin of (admins || [])) {
+      const adminPush = await sendPush(supabaseUrl, serviceKey, {
+        userId: admin.id,
+        title: `New Guide Booking Request`,
+        body: `${userName} is looking for a guide in ${displayCity}.`,
+        app: 'partner',
+        data: { type: 'booking_request', bookingId, screen: 'bookings' },
+      });
+      console.log(`[send-booking-request] Admin push to ${admin.id}: sent=${adminPush.sent}`);
     }
 
     return json({

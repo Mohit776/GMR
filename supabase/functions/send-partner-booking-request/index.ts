@@ -145,6 +145,7 @@ Deno.serve(async (req) => {
       userId: partnerId,
       title: `New Booking Request!`,
       body: `${userName} wants to book ${body.itemName || listing.title}. Tap to review!`,
+      app: 'partner',
       data: {
         type: 'booking_request',
         bookingId,
@@ -153,6 +154,22 @@ Deno.serve(async (req) => {
     });
 
     console.log(`[send-partner-booking-request] Push to partner ${partnerId}: sent=${pushResult.sent}, attempted=${pushResult.attempted}, success=${pushResult.success}, reason=${pushResult.reason || 'none'}`);
+
+    // Notify all admins
+    const { data: admins } = await serviceClient
+      .from('users')
+      .select('id')
+      .eq('role', 'admin');
+    for (const admin of (admins || [])) {
+      const adminPush = await sendPush(supabaseUrl, serviceKey, {
+        userId: admin.id,
+        title: `New Partner Booking Request`,
+        body: `${userName} wants to book ${body.itemName || listing.title}.`,
+        app: 'partner',
+        data: { type: 'booking_request', bookingId, screen: 'bookings' },
+      });
+      console.log(`[send-partner-booking-request] Admin push to ${admin.id}: sent=${adminPush.sent}`);
+    }
 
     return json({
       success: true,

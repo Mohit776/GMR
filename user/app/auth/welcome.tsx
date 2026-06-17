@@ -1,10 +1,11 @@
-import React, { useMemo } from 'react';
-import { View, StyleSheet, TouchableOpacity, ImageBackground, StatusBar, Image } from 'react-native';
+import React from 'react';
+import { View, StyleSheet, TouchableOpacity, StatusBar, Image } from 'react-native';
 import { Text } from '../../components/Text';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Video, ResizeMode } from 'expo-av';
 
 const COLORS = {
   primary: '#16A34A',      // Forest Green
@@ -15,35 +16,24 @@ const COLORS = {
   glassBg: 'rgba(30, 30, 30, 0.65)',
 };
 
-const SPLASH_IMAGES = [
-  require('../../assets/sp/sp1_1_11zon.png'),
-  require('../../assets/sp/sp2_2_11zon.png'),
-  require('../../assets/sp/sp3_3_11zon.png'),
-  require('../../assets/sp/sp4_4_11zon.png'),
-  require('../../assets/sp/sp5_5_11zon.png'),
-  require('../../assets/sp/sp6_6_11zon.png'),
-  require('../../assets/sp/sp7_7_11zon.png'),
-];
-
 export default function WelcomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-
-  // Pick a random image once per mount
-  const backgroundImage = useMemo(
-    () => SPLASH_IMAGES[Math.floor(Math.random() * SPLASH_IMAGES.length)],
-    []
-  );
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-      <ImageBackground
-        source={backgroundImage}
+      <Video
+        source={require('../../assets/sp/WhatsApp Video 2026-06-17 at 13.15.34.mp4')}
         style={styles.backgroundImage}
-        resizeMode="cover"
-      >
+        resizeMode={ResizeMode.COVER}
+        shouldPlay
+        isLooping
+        isMuted
+      />
+
+      <View style={StyleSheet.absoluteFillObject}>
         <LinearGradient
           colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.6)', 'rgba(0,0,0,0.8)']}
           style={[
@@ -53,10 +43,7 @@ export default function WelcomeScreen() {
         >
           {/* ── Header Section (Logo/Title) ── */}
           <View style={styles.headerContainer}>
-            <View style={styles.welcomeBadge}>
-              <MaterialCommunityIcons name="shield-check-outline" size={14} color={COLORS.primaryLight} />
-              <Text style={styles.welcomeBadgeText}>Verified travel partners</Text>
-            </View>
+           
             <View style={styles.logoPinContainer}>
               <Image 
                 source={require('../../assets/images/gmr_logo.png')} 
@@ -72,58 +59,7 @@ export default function WelcomeScreen() {
             </Text>
           </View>
 
-          {/* ── Features Card ── */}
-          <View style={styles.featuresCard}>
-            {/* Feature 1 */}
-            <View style={styles.featureItem}>
-              <View style={styles.iconBox}>
-                <MaterialCommunityIcons name="account-check-outline" size={24} color={COLORS.primaryLight} />
-              </View>
-              <View style={styles.featureTextContainer}>
-                <Text style={styles.featureTitle}>Verified local guides</Text>
-                <Text style={styles.featureDesc}>Find trusted people who know the city.</Text>
-              </View>
-            </View>
-
-            {/* Feature 2 */}
-            <View style={styles.featureItem}>
-              <View style={styles.iconBox}>
-                <MaterialCommunityIcons name="moped" size={24} color={COLORS.primaryLight} />
-              </View>
-              <View style={styles.featureTextContainer}>
-                <Text style={styles.featureTitle}>Bike, scooty and car rentals</Text>
-                <Text style={styles.featureDesc}>Compare travel options without extra calls.</Text>
-              </View>
-            </View>
-
-            {/* Feature 3 */}
-            <View style={styles.featureItem}>
-              <View style={styles.iconBox}>
-                <MaterialCommunityIcons name="map-marker-path" size={24} color={COLORS.primaryLight} />
-              </View>
-              <View style={styles.featureTextContainer}>
-                <Text style={styles.featureTitle}>Plans that match your route</Text>
-                <Text style={styles.featureDesc}>Move from exploring to booking quickly.</Text>
-              </View>
-            </View>
-
-            <View style={styles.assuranceRow}>
-              <View style={styles.assuranceItem}>
-                <Text style={styles.assuranceValue}>Fast</Text>
-                <Text style={styles.assuranceLabel}>booking</Text>
-              </View>
-              <View style={styles.assuranceDivider} />
-              <View style={styles.assuranceItem}>
-                <Text style={styles.assuranceValue}>Local</Text>
-                <Text style={styles.assuranceLabel}>support</Text>
-              </View>
-              <View style={styles.assuranceDivider} />
-              <View style={styles.assuranceItem}>
-                <Text style={styles.assuranceValue}>Secure</Text>
-                <Text style={styles.assuranceLabel}>checkout</Text>
-              </View>
-            </View>
-          </View>
+          
 
           {/* ── Get Started Button ── */}
           <TouchableOpacity
@@ -143,7 +79,7 @@ export default function WelcomeScreen() {
             </TouchableOpacity>
           </View>
         </LinearGradient>
-      </ImageBackground>
+      </View>
     </View>
   );
 }
@@ -154,7 +90,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#121212',
   },
   backgroundImage: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    right: 0,
     width: '100%',
     height: '100%',
   },

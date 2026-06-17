@@ -4,6 +4,7 @@ export type SendPushPayload = {
   title: string;
   body: string;
   data?: Record<string, unknown>;
+  app?: 'user' | 'partner'; // which app's FCM token column to target
 };
 
 export type PushDispatchResult = {

@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
 
   try {
     const payload = await req.json()
-    const { userId, token, title, body, data } = payload
+    const { userId, token, title, body, data, app } = payload
 
     if ((!userId && !token) || (!title && !body)) {
       return new Response(
@@ -122,17 +122,18 @@ Deno.serve(async (req) => {
     if (token) {
       targetTokens = [token]
     } else if (userId) {
-      // Fetch user FCM tokens
+      // Use partner_fcm_tokens for partner-app notifications, fcm_tokens for user-app
+      const tokenColumn = app === 'partner' ? 'partner_fcm_tokens' : 'fcm_tokens'
       const { data: userData, error } = await supabaseClient
         .from("users")
-        .select("fcm_tokens")
+        .select(tokenColumn)
         .eq("id", userId)
         .maybeSingle()
 
       if (error) {
         throw new Error(`Error fetching user tokens: ${error.message}`)
       }
-      targetTokens = userData?.fcm_tokens || []
+      targetTokens = (userData as any)?.[tokenColumn] || []
     }
 
     if (targetTokens.length === 0) {
@@ -243,13 +244,11 @@ Deno.serve(async (req) => {
 
     // Clean up stale tokens if we fetched by userId
     if (userId && staleTokens.length > 0) {
-      // Remove stale tokens from users array using array_remove logic we can do directly or via RPC.
-      // Calling unregister won't work easily here since it uses auth.uid() based security context.
-      // Alternatively, we update manually via service role.
-      const { data: dbData } = await supabaseClient.from("users").select("fcm_tokens").eq("id", userId).maybeSingle()
-      if (dbData && dbData.fcm_tokens) {
-        const remainingTokens = dbData.fcm_tokens.filter((tok: string) => !staleTokens.includes(tok))
-        await supabaseClient.from("users").update({ fcm_tokens: remainingTokens }).eq("id", userId)
+      const tokenColumn = app === 'partner' ? 'partner_fcm_tokens' : 'fcm_tokens'
+      const { data: dbData } = await supabaseClient.from("users").select(tokenColumn).eq("id", userId).maybeSingle()
+      if (dbData && (dbData as any)[tokenColumn]) {
+        const remainingTokens = (dbData as any)[tokenColumn].filter((tok: string) => !staleTokens.includes(tok))
+        await supabaseClient.from("users").update({ [tokenColumn]: remainingTokens }).eq("id", userId)
       }
     }
 

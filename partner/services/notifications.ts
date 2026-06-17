@@ -53,11 +53,11 @@ export async function initNotifications(userId: string): Promise<() => void> {
     // 5. Retry token fetch — SERVICE_NOT_AVAILABLE is a transient GPS connectivity error
     const token = await getTokenWithRetry();
     if (token) {
-      const { error } = await supabase.rpc('register_fcm_token', { p_token: token });
+      const { error } = await supabase.rpc('register_fcm_token', { p_token: token, p_app: 'partner' });
       if (error) {
         console.error('[FCM] RPC register_fcm_token failed:', error.message);
       } else {
-        console.log('[FCM] Token registered successfully in DB');
+        console.log('[FCM] Token registered successfully in DB (partner)');
       }
     }
   } catch (err) {
@@ -66,7 +66,7 @@ export async function initNotifications(userId: string): Promise<() => void> {
 
   const unsubscribeRefresh = messaging().onTokenRefresh(async (newToken) => {
     try {
-      await supabase.rpc('register_fcm_token', { p_token: newToken });
+      await supabase.rpc('register_fcm_token', { p_token: newToken, p_app: 'partner' });
     } catch (err) {
       console.error('[FCM] Failed to update refreshed token:', err);
     }
