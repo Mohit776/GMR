@@ -25,26 +25,33 @@ export async function sendCustomNotification(formData: FormData) {
     if (targetType === 'specific' && targetId) {
       const { data, error } = await supabaseAdmin
         .from('users')
-        .select('fcm_tokens')
+        .select('fcm_tokens, partner_fcm_tokens')
         .eq('id', targetId)
         .single();
 
       if (error) throw error;
-      tokens = data?.fcm_tokens || [];
+      tokens = [...(data?.fcm_tokens || []), ...(data?.partner_fcm_tokens || [])];
     } else {
-      let query = supabaseAdmin.from('users').select('fcm_tokens').not('fcm_tokens', 'is', null);
+      let query = supabaseAdmin.from('users').select('fcm_tokens, partner_fcm_tokens');
       if (targetType === 'users') {
-        query = query.eq('role', 'user');
+        query = query.eq('role', 'user').not('fcm_tokens', 'is', null);
       } else if (targetType === 'partners') {
-        query = query.eq('role', 'guide');
+        query = query.eq('role', 'guide').not('partner_fcm_tokens', 'is', null);
       }
 
       const { data, error } = await query;
       if (error) throw error;
 
       data?.forEach(user => {
-        if (Array.isArray(user.fcm_tokens)) {
-          tokens.push(...(user.fcm_tokens as string[]));
+        if (targetType === 'users' || targetType === 'all') {
+          if (Array.isArray(user.fcm_tokens)) {
+            tokens.push(...(user.fcm_tokens as string[]));
+          }
+        }
+        if (targetType === 'partners' || targetType === 'all') {
+          if (Array.isArray(user.partner_fcm_tokens)) {
+            tokens.push(...(user.partner_fcm_tokens as string[]));
+          }
         }
       });
     }

@@ -25,6 +25,7 @@ export async function approvePartner(id: string) {
             userId: id,
             title: 'You are approved! 🎉',
             body: 'Your partner account has been approved. You can now receive booking requests.',
+            app: 'partner',
             data: {
               type: 'partner_approved',
             },

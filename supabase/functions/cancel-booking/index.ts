@@ -96,6 +96,7 @@ Deno.serve(async (req) => {
         userId,
         title: 'Booking cancelled',
         body: `The booking for ${booking.item_name || 'your trip'} was cancelled by the traveller.`,
+        app: 'partner',
         data: {
           type: 'booking_cancelled',
           bookingId,

@@ -116,6 +116,7 @@ Deno.serve(async (req) => {
           userId: preBooking.partner_id,
           title: 'Payment received! ✅',
           body: `${preBooking.guest_name || 'The traveler'} has paid. Your booking is confirmed!`,
+          app: 'partner',
           data: { type: 'payment_confirmed', bookingId, screen: 'bookings' },
         });
         console.log(`[razorpay-verify-payment] Partner push result:`, pushResult);

@@ -283,6 +283,7 @@ export async function sendBookingPush(resolved: ResolvedBooking, guestName: stri
         userId: resolved.partnerId,
         title: 'New booking',
         body: `${guestName} booked ${resolved.itemName}.`,
+        app: 'partner',
         data: { type: 'new_booking', bookingId, screen: 'bookings' },
       }),
     });

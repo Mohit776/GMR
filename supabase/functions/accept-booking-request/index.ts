@@ -138,6 +138,7 @@ Deno.serve(async (req) => {
           userId: otherGuideId,
           title: 'Booking taken',
           body: 'Another partner accepted this booking first.',
+          app: 'partner',
           data: { type: 'booking_taken', bookingId },
         });
         console.log(`[accept-booking-request] Other partner ${otherGuideId} push result: sent=${pushResult.sent}`);

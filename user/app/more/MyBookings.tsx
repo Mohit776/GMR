@@ -14,6 +14,7 @@ import {
   Alert,
   Animated,
   Linking,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../utils/supabase';
@@ -100,6 +101,8 @@ interface Booking {
   item_id?: string;
   pre_payment_status?: string | null;
   booking_type?: BookingType;
+  partnerLat?: number | null;
+  partnerLng?: number | null;
   _createdAt?: number;
 }
 
@@ -280,12 +283,27 @@ const BookingCard = ({ booking, onCancel }: { booking: Booking; onCancel?: (id: 
   );
 
   const handleDirections = useCallback(() => {
+    if (booking.partnerLat && booking.partnerLng) {
+      const lat = booking.partnerLat;
+      const lng = booking.partnerLng;
+      const label = encodeURIComponent(booking.vehicleName || 'Partner Location');
+      const url =
+        Platform.OS === 'ios'
+          ? `maps://?ll=${lat},${lng}&q=${label}`
+          : `geo:${lat},${lng}?q=${lat},${lng}(${label})`;
+      Linking.openURL(url).catch(() => {
+        // Fallback to Google Maps web
+        Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`);
+      });
+      return;
+    }
+
     if (booking.pickup && booking.pickup !== 'Not specified') {
       Linking.openURL(
         `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(booking.pickup)}`
       );
     }
-  }, [booking.pickup]);
+  }, [booking.pickup, booking.partnerLat, booking.partnerLng, booking.vehicleName]);
 
   const handleRebook = useCallback(() => {
     if (booking.booking_type === 'hotel' || booking.booking_type === 'guide') {
@@ -608,6 +626,13 @@ export default function MyBookingsScreen() {
             .filter(Boolean)
         ),
       ];
+      const partnerIds = [
+        ...new Set(
+          rows
+            .map((r) => r.partner_id)
+            .filter(Boolean)
+        ),
+      ];
 
       // Batch fetch listing images
       const listingImageMap: Record<string, string | null> = {};
@@ -622,16 +647,22 @@ export default function MyBookingsScreen() {
         });
       }
 
-      // Batch fetch guide avatars
+      // Batch fetch guide avatars and partner coordinates
       const guideImageMap: Record<string, string | null> = {};
-      if (guideIds.length > 0) {
-        const { data: guides } = await supabase
+      const partnerLocationMap: Record<string, { lat: number; lng: number }> = {};
+      const combinedUserIds = [...new Set([...guideIds, ...partnerIds])];
+
+      if (combinedUserIds.length > 0) {
+        const { data: users } = await supabase
           .from('users')
-          .select('id, photo_url, profile_data')
-          .in('id', guideIds);
-        (guides || []).forEach((g) => {
-          const pd = g.profile_data || {};
-          guideImageMap[g.id] = g.photo_url || pd.profileImage || pd.profile_image || null;
+          .select('id, photo_url, profile_data, latitude, longitude')
+          .in('id', combinedUserIds);
+        (users || []).forEach((u) => {
+          const pd = u.profile_data || {};
+          guideImageMap[u.id] = u.photo_url || pd.profileImage || pd.profile_image || null;
+          if (u.latitude && u.longitude) {
+            partnerLocationMap[u.id] = { lat: u.latitude, lng: u.longitude };
+          }
         });
       }
 
@@ -666,6 +697,8 @@ export default function MyBookingsScreen() {
           listingImage = listingImageMap[row.item_id] || null;
         }
 
+        const partnerLoc = row.partner_id ? partnerLocationMap[row.partner_id] : null;
+
         return {
           id: row.id,
           vehicleName: row.item_name || 'Unknown Booking',
@@ -682,6 +715,8 @@ export default function MyBookingsScreen() {
           item_id: row.item_id,
           pre_payment_status: row.pre_payment_status || null,
           booking_type: row.booking_type || null,
+          partnerLat: partnerLoc ? partnerLoc.lat : null,
+          partnerLng: partnerLoc ? partnerLoc.lng : null,
           _createdAt: row.created_at ? new Date(row.created_at).getTime() : 0,
         };
       });
